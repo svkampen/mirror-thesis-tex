@@ -2,30 +2,32 @@
 \usepackage[english]{babel}
 \usepackage{outlines}
 
-
-\usepackage[utf8]{inputenc}
 \usepackage{textcomp}
 \usepackage{csquotes}
 \usepackage{biblatex}
+\usepackage{braket}
 \usepackage{graphicx}
 \usepackage{xspace}
 
 \addbibresource{refs.bib}
+
+\usepackage{fontspec}
+%\setmainfont[Ligatures={Common,TeX}]{Adobe Caslon Pro}
+%\setsansfont{Source Sans Pro}
 
 \newcommand{\ucosiii}{\textmu C/OS-III\xspace}
 \newcommand{\ucosii}{\textmu C/OS-II\xspace}
 \newcommand{\ucos}{\textmu C/OS\xspace}
 
 \usepackage{booktabs}
-\usepackage{fixme}
-
 
 \makeatletter
 \define@key{Gin}{resolution}{\pdfimageresolution=#1\relax}
 \makeatother
 
-% Title Page
-\title{Title}
+\tolerance=2000
+
+\title{Adaptive scheduling in Real-Time Operating Systems}
 \author{Sam van Kampen}
 \supervisors{T. Walstra}
 \signedby{Signees}
@@ -39,27 +41,53 @@
 \tableofcontents
 
 \chapter{Introduction}
-\chapter{Background}
-\section{Real-time Operating Systems}
 In our day-to-day computing, the usefulness of actions usually does not depend on them happening within a predictable timeframe. If your web browser starts 50 milliseconds later than usual, that might be annoying, but it does not render the action useless. In other systems, however, the consequences of irregular execution times can be dangerous or even fatal. A computing system that must react within precise time constraints to environmental events is called a real-time system\cite{buttazzo2011hard}. In these systems, correct behavior depends on the results of computations but also the time at which they are produced. Examples can mostly be found in the embedded market, ranging from coffee machines to automated manufacturing robots.
 
-Operating systems that facilitate the running of these real-time systems are, unsurprisingly, called \textit{real-time operating systems}.
+Often, for a system to be able to work in real time, it is said to have to be fast. This is, however, a misconception. As noted in \textcite{buttazzo2011hard}, a real-time system certainly needs to be \textit{fast enough} to react to its environment. 
+To be able to guarantee that systems can react within precise time constraints, a high degree of predictability is required. Features of modern computing systems that speed up average response time are therefore often eschewed in favour of predictability: examples include on-chip cache memory or certain implementations of \textit{Direct Memory Access} (DMA).
 
-\subsection{Characteristics of real-time systems}
 
-
-\subsection{\ucos} \label{sec:ucos}
+\chapter{Background}
+\section{\ucos} \label{sec:ucos}
 The real-time operating system that will be used in this thesis is called \textit{\ucosiii}. The original version of \ucos was written in 1991, and subsequent versions have been used in a wide variety of applications, among them NASA's Curiosity Rover\footnote{https://www.micrium.com/about/customer-stories/curiosity/}. It is especially suited to this thesis because of the breadth of its documentation. Firstly, an extensive manual \cite{micrium:ucosmanual} is supplied with the source code, and secondly, the source code itself is heavily commented and written with readability in mind.
 
 \section{Scheduling}
-In contemporary operating systems, it is common to have many programs in memory, executing concurrently. This concept is called \textit{multitasking}. To give the illusion of multiple programs running `at the same time' on a single core, program execution is interleaved, by letting a program run for a small time slice before switching to another. The criteria that are used to assign tasks to the CPU are contained in a \textit{scheduling policy}. First, we will discuss ways that multitasking can be achieved. Subsequently, scheduling policies are discussed.
+In contemporary operating systems, it is common to have many programs in memory, executing concurrently. This concept is called \textit{multitasking}. To give the illusion of multiple programs running `at the same time' on a single core, program execution is interleaved, by letting a program run for a small time slice before switching to another. The criteria that are used to assign tasks to the CPU are contained in a \textit{scheduling policy}. 
 
-\subsection{An overview of multitasking}
-There are broadly two multitasking strategies\cite[\S 6.1.3]{osconcepts}: an operating system can either run tasks and wait for them to yield back to the operating for another task to be scheduled, or an operating system can decide to interrupt a running task and schedule another on its own. The first approach is called \textit{cooperative} multitasking, since tasks need to cooperate to run concurrently, and the second approach is called \textit{preemptive} multitasking, since tasks are \textit{preempted} (interrupted and switched out) by the operating system.
+\subsection{The scheduling problem}
+\textcite{buttazzo2011hard} defines the scheduling problem as follows. Given a set of $n$ tasks $\Gamma = \set{\tau_1, \tau_2, \ldots, \tau_n}$, a set of $m$ processors $P = \set{P_1, P_2, \ldots, P_m}$, a set of $s$ types of resources $R = \set{R_1, R_2, \ldots, R_s}$, a directed acyclic graph (DAG) describing the precedence relation among tasks, and a set of timing constraints associated with each task, assign processors from $P$ and resources from $R$ to tasks in $\Gamma$ in order to complete all tasks under the specified constraints. The scheduling problem, in its general form, has been shown to be NP-complete, and hence computationally intractable.
 
-\subsection{}
+Despite this general intractability, many algorithms have been developed which solve a more specific version of the scheduling problem. These scheduling algorithms have some common characteristics, which are outlined below.
+
+\subsection{Characteristics of scheduling algorithms}
+The following scheduling algorithm classes are adapted from \textcite{buttazzo2011hard}:
+\begin{outline}
+    \1 Preemptive vs. Non-preemptive
+        \2 In preemptive schedulers, a running task can be interrupted at any time and switched out for another task.
+        \2 In non-preemptive algorithms, a task is executed until completion.
+    \1 Static vs. dynamic
+        \2 In static schedulers, scheduling decisions are taken based on parameters that do not change as the system is running. In dynamic schedulers, these parameters \emph{can} change during system evolution.
+    \1 Guarantee-based vs. Best-effort
+        \2 In a guarantee-based scheduling algorithm, tasks are only accepted if a guarantee can be made that they can be scheduled, whereas in a best-effort system, tasks may be accepted that cannot be allowed to run to completion for fear of jeopardizing other tasks.
+\end{outline}
+
+
+\subsection{Task characteristics in real-time systems}
+Scheduling algorithms usually make decisions on which task to schedule based on characteristics of the tasks in the given task set, perhaps augmented with characteristics of the system they are running on. A few task characteristics that are common on real-time systems, and used in the scheduling algorithms below, are detailed below.
+
+\begin{outline}
+    \1 A task's \textbf{arrival time} ($a_i$) is the time at which a task becomes ready for execution;
+    \1 A task's \textbf{computation time} ($C_i$) is the time necessary for the processor to execute the task, without interruption;
+    \1 A task's \textbf{absolute deadline} ($d_i$) is the time before which a task should be completed to avoid damage to the system;
+    \1 A task's \textbf{relative deadline} ($D_i$) is the difference between the task's arrival time and its absolute deadline: $D_i = d_i - a_i$;
+    \1 A task's \textbf{finishing time} ($f_i$) is the time at which a task finishes execution;
+    \1 A task's \textbf{lateness} ($L_i$) is the difference between the task's absolute deadline and its finishing time.
+\end{outline}
 
 \subsection{Earliest Deadline First}
+The \textbf{Earliest Deadline First} algorithm is an elegant solution to the problem of scheduling $n$ independent tasks on a uniprocessor system, with dynamic arrivals and preemption. The algorithm simply picks the task with the earliest absolute deadline among all ready tasks, and executes it. When a new task arrives with an earlier deadline, the running task is preempted in favor of the new task.
+
+
 
 \subsection{Priority-based}
 
@@ -83,14 +111,12 @@ The hardware used in this thesis is a Raspberry Pi 1B, a single-board computer f
 
 The Pi has a number of desirable characteristics that make it suitable for use in this thesis. Firstly, it uses a low-power ARM processor, an architecture which is very common in embedded systems (with a market share of 37\% at the end of 2014 \cite{arm:embeddedmarketshare}). Additionally, its GPIO pins and their support for serial I/O allow for a simple way of interacting with the Raspberry Pi without having to implement, say, a USB driver. Such serial connections are also very common in embedded systems. Lastly, due to the popularity of the Pi, it is fairly well-documented. The datasheet that describes the hardware in the Raspberry Pi and how to interface with it is freely available\cite{bcm:2835peripherals}, and although it does contain the customary datasheet errors, there is a thorough list of errata available online\cite{bcm:2835errata}. Where the datasheet has omissions, there is also often information available online.
 
-% citations to forum posts about SPI clock and stuff? and how mailboxes work? and about where the system timer interrupt is?
-
 \subsubsection{General Purpose I/O}
 As described above, the Raspberry Pi has 26 general purpose I/O pins. Some of these pins have a fixed function, but many have multiple functions, and which one a pin uses can be controlled by software. An overview of the 26-pin header and the functions of its pins can be seen in figure~\ref{fig:gpiopinout}. One thing of note is the fact that the pin numbering used on the header is not the same as is used in the BCM2835 peripherals manual; for instance, pin 7 on the header is GPIO pin 4 in the data sheet.
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale=0.65]{latex_template_thesis_v4-2/Pi-GPIO-header-26-sm.png}
+    \includegraphics[scale=0.65]{Pi-GPIO-header-26-sm.png}
     \caption{The Raspberry Pi 1B GPIO pinout. Pins labeled \textit{GPIO \#} correspond to GPIO pins in the Broadcom BCM2835 peripherals manual\cite{bcm:2835peripherals}.}
     \label{fig:gpiopinout}
 \end{figure}
