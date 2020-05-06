@@ -2,22 +2,26 @@
 \usepackage[english]{babel}
 \usepackage{outlines}
 
+\usepackage{amsmath}
 \usepackage{textcomp}
 \usepackage{csquotes}
 \usepackage{biblatex}
 \usepackage{braket}
 \usepackage{graphicx}
 \usepackage{xspace}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
 
 \addbibresource{refs.bib}
 
 \usepackage{fontspec}
-%\setmainfont[Ligatures={Common,TeX}]{Adobe Caslon Pro}
-%\setsansfont{Source Sans Pro}
+\setmainfont[Ligatures={Common,TeX}]{Adobe Caslon Pro}
+\setsansfont{Source Sans Pro}
 
 \newcommand{\ucosiii}{\textmu C/OS-III\xspace}
 \newcommand{\ucosii}{\textmu C/OS-II\xspace}
 \newcommand{\ucos}{\textmu C/OS\xspace}
+\newcommand{\task}[1]{\ensuremath{\tau_#1}}
 
 \usepackage{booktabs}
 
@@ -27,10 +31,11 @@
 
 \tolerance=2000
 
-\title{Adaptive scheduling in Real-Time Operating Systems}
+\title{Predictable, guarantee-based\\ scheduling in Real-Time\\Operating Systems}
 \author{Sam van Kampen}
 \supervisors{T. Walstra}
 \signedby{Signees}
+
 
 \begin{document}
 \maketitle
@@ -40,43 +45,59 @@
 
 \tableofcontents
 
+%
+%
+% I N T R O D U C T I O N
+%
+%
+
 \chapter{Introduction}
-In our day-to-day computing, the usefulness of actions usually does not depend on them happening within a predictable timeframe. If your web browser starts 50 milliseconds later than usual, that might be annoying, but it does not render the action useless. In other systems, however, the consequences of irregular execution times can be dangerous or even fatal. A computing system that must react within precise time constraints to environmental events is called a real-time system\cite{buttazzo2011hard}. In these systems, correct behavior depends on the results of computations but also the time at which they are produced. Examples can mostly be found in the embedded market, ranging from coffee machines to automated manufacturing robots.
+In our day-to-day computing, we are usually not concerned with predictability when it comes to program execution time. If running a program takes slightly longer than it does normally, or our system becomes temporarily unresponsive, we may be annoyed, but no disastrous consequences are induced. In other systems, however, the consequences of irregular execution times can be dangerous or even fatal. A computing system that must react within precise time constraints to environmental events is called a (hard)\footnote{Sometimes, a distinction is made between hard real-time systems and soft real-time systems. In soft real-time systems, the consequences of missing time constraints are not catastrophic, but merely lead to `degraded system performance'. The distinction between soft real-time and non-real-time tasks is often blurry, however, since there is almost always a soft deadline by which we want a task to produce results. The value of the soft real-time paradigm mostly seems to be in optimizing the value gained from executing tasks where value varies between tasks. The topic of soft real-time computing is not discussed further in this thesis, so whenever the term `real-time' is used, it can be read to refer to hard real-time systems.} real-time system\cite{buttazzo2011hard}. In these systems, correct behavior depends on the results of computations but also the time at which they are produced. Examples can mostly be found in the embedded market, ranging from industrial automation or military equipment to traffic control systems.
 
-Often, for a system to be able to work in real time, it is said to have to be fast. This is, however, a misconception. As noted in \textcite{buttazzo2011hard}, a real-time system certainly needs to be \textit{fast enough} to react to its environment. 
-To be able to guarantee that systems can react within precise time constraints, a high degree of predictability is required. Features of modern computing systems that speed up average response time are therefore often eschewed in favour of predictability: examples include on-chip cache memory or certain implementations of \textit{Direct Memory Access} (DMA).
+Due to the focus of real-time systems on executing actions within a given time frame, these systems are often said to have to be \textit{fast}. This framing is, however, misleading. When we talk about speed, what do we mean? In a real-time scenario, a system is required to provide a guarantee that tasks can be successfully executed within the given time constraints. In order to do this, the system needs to be \textit{fast enough} to react to its environment, but it also needs to have a high degree of predictability. Features of modern computing systems that speed up average response time (and would, therefore, make a real-time system `faster' by some definition of `fast') are therefore often eschewed in favor of predictability: examples include demand paging or `cycle-stealing' implementations of \textit{Direct Memory Access} (DMA).
+
+To implement a real-time computing system, the entire system can be written from the ground up, without using any existing code. This can often be costly in terms of time, however. In order to facilitate quick development of real-time systems, `general-purpose' real-time operating systems have been developed, which contain facilities like task management, mutual exclusion primitives, et cetera.
 
 
-\chapter{Background}
-\section{\ucos} \label{sec:ucos}
-The real-time operating system that will be used in this thesis is called \textit{\ucosiii}. The original version of \ucos was written in 1991, and subsequent versions have been used in a wide variety of applications, among them NASA's Curiosity Rover\footnote{https://www.micrium.com/about/customer-stories/curiosity/}. It is especially suited to this thesis because of the breadth of its documentation. Firstly, an extensive manual \cite{micrium:ucosmanual} is supplied with the source code, and secondly, the source code itself is heavily commented and written with readability in mind.
+\subsubsection{Research question}
+As described above, predictability is a vital part of real-time systems. Naturally, in systems that consist of multiple tasks, an important factor in guaranteeing task execution within given deadlines is the \textit{task scheduler}. As noted in \textcite{buttazzo2011hard}, however, many real-time kernels lack functionality that guarantees task execution. In many cases, a general priority-based scheduler is implemented, with possible round-robin scheduling functionality. Therefore, in this thesis, I will explore the benefits of guarantee-based scheduling algorithms through both literature analysis and through the implementation of a guarantee-based scheduling algorithm in a real-time operating system, and by evaluating it on real hardware. The research question I am aiming to answer is:
 
-\section{Scheduling}
+\begin{outline}
+    \itemsep=0em
+    \1 What is the performance and usability effect of implementing a guarantee-based scheduling algorithm in a real-time operating system, as compared to the commonly implemented priority-based scheduling algorithm?
+\end{outline}
+
+%
+%
+% S C H E D U L I N G
+%
+%
+
+\chapter{Scheduling}
 In contemporary operating systems, it is common to have many programs in memory, executing concurrently. This concept is called \textit{multitasking}. To give the illusion of multiple programs running `at the same time' on a single core, program execution is interleaved, by letting a program run for a small time slice before switching to another. The criteria that are used to assign tasks to the CPU are contained in a \textit{scheduling policy}. 
 
-\subsection{The scheduling problem}
+\section{The scheduling problem}
 \textcite{buttazzo2011hard} defines the scheduling problem as follows. Given a set of $n$ tasks $\Gamma = \set{\tau_1, \tau_2, \ldots, \tau_n}$, a set of $m$ processors $P = \set{P_1, P_2, \ldots, P_m}$, a set of $s$ types of resources $R = \set{R_1, R_2, \ldots, R_s}$, a directed acyclic graph (DAG) describing the precedence relation among tasks, and a set of timing constraints associated with each task, assign processors from $P$ and resources from $R$ to tasks in $\Gamma$ in order to complete all tasks under the specified constraints. The scheduling problem, in its general form, has been shown to be NP-complete, and hence computationally intractable.
 
 Despite this general intractability, many algorithms have been developed which solve a more specific version of the scheduling problem. These scheduling algorithms have some common characteristics, which are outlined below.
 
-\subsection{Characteristics of scheduling algorithms}
+\section{Characteristics of scheduling algorithms}
 The following scheduling algorithm classes are adapted from \textcite{buttazzo2011hard}:
 \begin{outline}
     \1 Preemptive vs. Non-preemptive
         \2 In preemptive schedulers, a running task can be interrupted at any time and switched out for another task.
         \2 In non-preemptive algorithms, a task is executed until completion.
-    \1 Static vs. dynamic
-        \2 In static schedulers, scheduling decisions are taken based on parameters that do not change as the system is running. In dynamic schedulers, these parameters \emph{can} change during system evolution.
+    \1 Static vs. Dynamic
+        \2 In static schedulers, scheduling decisions are taken based on parameters that do not change as the system is running. In dynamic schedulers, these parameters can change during system evolution.
     \1 Guarantee-based vs. Best-effort
         \2 In a guarantee-based scheduling algorithm, tasks are only accepted if a guarantee can be made that they can be scheduled, whereas in a best-effort system, tasks may be accepted that cannot be allowed to run to completion for fear of jeopardizing other tasks.
 \end{outline}
 
-
-\subsection{Task characteristics in real-time systems}
+\section{Task characteristics in real-time systems}
 Scheduling algorithms usually make decisions on which task to schedule based on characteristics of the tasks in the given task set, perhaps augmented with characteristics of the system they are running on. A few task characteristics that are common on real-time systems, and used in the scheduling algorithms below, are detailed below.
 
 \begin{outline}
-    \1 A task's \textbf{arrival time} ($a_i$) is the time at which a task becomes ready for execution;
+    \1 A task's \textbf{arrival time} ($a_i$) (also called \textbf{release time} $r_i$) is the time at which a task becomes ready for execution;
     \1 A task's \textbf{computation time} ($C_i$) is the time necessary for the processor to execute the task, without interruption;
     \1 A task's \textbf{absolute deadline} ($d_i$) is the time before which a task should be completed to avoid damage to the system;
     \1 A task's \textbf{relative deadline} ($D_i$) is the difference between the task's arrival time and its absolute deadline: $D_i = d_i - a_i$;
@@ -84,19 +105,93 @@ Scheduling algorithms usually make decisions on which task to schedule based on 
     \1 A task's \textbf{lateness} ($L_i$) is the difference between the task's absolute deadline and its finishing time.
 \end{outline}
 
+\section{Periodic scheduling algorithms}
+First, we'll discuss scheduling algorithms which work on periodic task sets. In these task sets, tasks have to be executed at regular intervals. These intervals
+
+As mentioned in the list of scheduling algorithm characteristics, \emph{static scheduling algorithms} do not take varying system behavior into account, and make use of characteristics that are known at system start. 
+
+\subsection{Rate Monotonic}
+\emph{Rate Monotonic} is a scheduling algorithm for periodic task sets which assigns priorities based on the frequency of the task. Id est, if the task needs to run more often, it gets a higher priority.
+
+\section{Dynamic scheduling algorithms}
+
 \subsection{Earliest Deadline First}
-The \textbf{Earliest Deadline First} algorithm is an elegant solution to the problem of scheduling $n$ independent tasks on a uniprocessor system, with dynamic arrivals and preemption. The algorithm simply picks the task with the earliest absolute deadline among all ready tasks, and executes it. When a new task arrives with an earlier deadline, the running task is preempted in favor of the new task.
+The \emph{Earliest Deadline First} algorithm is an elegant solution to the problem of scheduling $n$ independent tasks on a uniprocessor system, with dynamic arrivals and preemption. The algorithm simply picks the task with the earliest absolute deadline among all ready tasks, and executes it. When a new task arrives with an earlier deadline, the running task is preempted in favor of the new task.
+
+\subsubsection{Precedence constraints}
+Using a transformation on the task set, EDF can be extended to handle dependent tasks\cite{Chetto1990}. The idea is as follows. Say we have a task set, with two tasks: \task{1} and \task{2}, where \task{2} is dependent on \task{1}. To honor this precedence constraint, we can modify the arrival time of \task{2}, so that it cannot start before \task{1} has finished. Note that, if there is a valid schedule for the task set which satisfies the precedence constraint, the following conditions are met:
+
+\begin{align}
+    s_2 \ge a_2 \quad &\text{(\task{2} cannot start before its arrival time)}\\
+    s_2 \ge a_1 + C_1 \quad &\text{(\task{2} cannot start before the minimum finishing time of \task{1})}
+\end{align}
+
+To guarantee both of these, we can set $s_2$ equal to $\max(a_2, a_1 + C_1)$.
+
+Similarly, task deadlines need to be modified, so that \task{1} finishes before the last possible start time of \task{2}, that being $d_2 - C_2$.
+
+\section{Combining periodic and aperiodic tasks}
+One characteristic of the scheduling algorithms that have been discussed in the previous sections is whether they can be used with periodic or aperiodic tasks, or both. In all cases, however, we have looked at homogeneous task sets - that is, task sets that either consist purely of periodic, or purely of aperiodic task sets. In this section, algorithms that can handle heterogeneous task sets are discussed.
+
+The idea behind many of these algorithms is to compute the processor utilization of the periodic task set, and set aside the rest of the processor utilization to be used by a so-called \emph{task server}, which handles aperiodic requests. The processor utilization set aside for the server, denoted $U_s$, is often called the \emph{bandwidth} of the server.
+
+\subsection{Background Scheduling}
+The simplest way of scheduling 
+
+\subsection{Total Bandwidth Server}
+The \emph{Total Bandwidth Server} is a server for aperiodic jobs which is used in conjunction with the EDF algorithm. When an aperiodic job $j_k$ enters the system, at $t = a_k$, it receives a deadline
+
+\[ d_k = \max(a_k, d_{k-1}) + \frac{C_k}{U_s} \]
+
+where $U_s$ is the server bandwidth and $C_k$ is the job's worst-case execution time. The name of the server is reflected in the fact that the total bandwidth over a given time period is given to the job.
+
+After this deadline is assigned, the job is scheduled by the EDF algorithm, as are the periodic tasks in the system.
+
+\subsubsection{Optimizing TBS: deadline advancement}
+
+Note that this deadline is pessimistic, in the sense that it could be set earlier, improving aperiodic response time, if the finishing time of $j_k$, $f_k$, is earlier than its assigned deadline. This can occur depending on when periodic tasks are scheduled, since the deadline accounts for the worst-case finishing time given the processor utilization used by periodic tasks. For instance, let us take the situation in figure~\ref{fig:tbsworstdeadline}. Here, we have periodic processor utilization $U_p = \frac{5}{6}$, and server bandwidth $U_s = \frac{1}{6}$. The deadline assigned to $j_k$, which has computation time $C_k = 2$ and arrives at $t = 2$, is therefore $d_k = 2 + \frac{C_k}{U_s} = 14$. Due to the strange (non-EDF) periodic schedule, it also finishes at $t = 14$. EDF, with deadline $d_k = 14$, produces a schedule where $j_k$ finishes at $f_k = 12$ (fig. \ref{fig:tbsedfdeadline}). Knowing this, we could set its deadline to $12$. However, if we then recompute its EDF schedule, we will find that the task finishes even earlier. This process can be repeated to find $j_k$'s earliest finishing time, $f^*_k$, which turns out to be $5$. As you can see, the response time of $j_k$ can be greatly improved, without jeopardizing periodic tasks. This does, however, add computational complexity, due to the fact that evaluating $f^*_k$ requires (repeatedly) computing the EDF schedule up to the finishing time of $j_k$.
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.85\textwidth]{worstcasedeadline.eps}
+    \caption{A situation where job $j_k$ finishes exactly at its deadline.}
+    \label{fig:tbsworstdeadline}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.8\textwidth]{edfdeadline.eps}
+    \caption{The situation produced by EDF, where $f_k$ = 12.}
+    \label{fig:tbsedfdeadline}
+\end{figure}
+
+\section{Scheduling in \ucosiii}
+Just as in many real-time operating systems, the scheduler used in \ucosiii is a generic priority-based scheduler. The priorities are assigned at task creation, but there is optional support for changing priorities at run-time. The number of priority levels is configurable at compile time.
+
+There is optional support for round-robin scheduling -- if it is active, tasks can be created with the same priority, and if multiple tasks are ready at a given priority level, they are each run for a given time quantum (but can yield earlier).
+
+The flexibility in the number of priority levels seems to suggest that many dynamic scheduling algorithms (such as EDF) could be built on top of this priority-based scheduler. Every additional priority level, however, brings a memory cost with it. \ucos uses a \textit{priority bitmap} (see fig.~\ref{fig:priobitmap}) to keep track of which priorities have associated ready tasks, and each priority has its own ready list. This diminishes the flexibility of the scheduler, but improves the scheduling performance in the case where the number of priorities is fairly low.
 
 
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.8\textwidth]{priobitmap.png}
+    \caption{An illustration of \ucosiii's priority bitmap. Taken from the user manual, figure 6-3. If a bit is set, it indicates a ready task in the ready list of the associated priority. The highest priority task can be found quickly by using processors' `count-leading-zeros' instruction.}
+    \label{fig:priobitmap}
+\end{figure}
 
-\subsection{Priority-based}
+\subsection{The scheduling implementation}
 
-\subsection{Round-robin}
+%
+%
+% H A R D W A R E
+%
+%
 
-\section{Hardware}
-Real-time operating systems run on a variety of hardware, from the aforementioned Curiosity Rover to home routers and everything in between. Running tests on all of this different hardware is, of course, impossible. For this thesis, I have chosen to use a piece of hardware which exemplifies a number of characteristics of real-time systems, but which is also readily available and well-documented: a first-generation Raspberry Pi.
+\chapter{Hardware}
+Real-time operating systems run on a broad range of hardware. Running tests on all of this different hardware is, of course, impossible. For this thesis, I have chosen to use a piece of hardware which exemplifies a number of characteristics of real-time systems, but which is also readily available and well-documented: a first-generation Raspberry Pi.
 
-\subsection{The Raspberry Pi 1B}
+\section{The Raspberry Pi 1B}
 The hardware used in this thesis is a Raspberry Pi 1B, a single-board computer from early 2012. While it was marketed as an educational `toy' for children to learn how to program on, it became popular mainly as a cheap development board for (hardware) hobbyists, due to its ability to control electronics using its general purpose I/O (GPIO) pins, and its low price point of \$25-35 (depending on model). Its hardware is as follows:
 
 \begin{outline}
@@ -111,24 +206,33 @@ The hardware used in this thesis is a Raspberry Pi 1B, a single-board computer f
 
 The Pi has a number of desirable characteristics that make it suitable for use in this thesis. Firstly, it uses a low-power ARM processor, an architecture which is very common in embedded systems (with a market share of 37\% at the end of 2014 \cite{arm:embeddedmarketshare}). Additionally, its GPIO pins and their support for serial I/O allow for a simple way of interacting with the Raspberry Pi without having to implement, say, a USB driver. Such serial connections are also very common in embedded systems. Lastly, due to the popularity of the Pi, it is fairly well-documented. The datasheet that describes the hardware in the Raspberry Pi and how to interface with it is freely available\cite{bcm:2835peripherals}, and although it does contain the customary datasheet errors, there is a thorough list of errata available online\cite{bcm:2835errata}. Where the datasheet has omissions, there is also often information available online.
 
-\subsubsection{General Purpose I/O}
+\subsection{General Purpose I/O}
 As described above, the Raspberry Pi has 26 general purpose I/O pins. Some of these pins have a fixed function, but many have multiple functions, and which one a pin uses can be controlled by software. An overview of the 26-pin header and the functions of its pins can be seen in figure~\ref{fig:gpiopinout}. One thing of note is the fact that the pin numbering used on the header is not the same as is used in the BCM2835 peripherals manual; for instance, pin 7 on the header is GPIO pin 4 in the data sheet.
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale=0.65]{Pi-GPIO-header-26-sm.png}
+    \includegraphics[scale=0.5]{Pi-GPIO-header-26-sm.png}
     \caption{The Raspberry Pi 1B GPIO pinout. Pins labeled \textit{GPIO \#} correspond to GPIO pins in the Broadcom BCM2835 peripherals manual\cite{bcm:2835peripherals}.}
     \label{fig:gpiopinout}
 \end{figure}
 
-\subsubsection{The VideoCore IV processor}
-Coming from the x86 world, you might expect the VideoCore IV (VC4) GPU to be little more than a standard PC graphics card, managing and accelerating graphical output. While it certainly does do those things, the VC4 has much broader responsibilities on the Raspberry Pi. It runs a (real-time) operating system of its own, ThreadX\cite{rpi:opensourcevpu}, and handles system initialisation and the early boot process\cite{rpi:bootforum}. It also performs power and clock management\cite{rpi:gpuclockpower}. As described 
+\subsection{The VideoCore IV processor}
+Coming from the x86 world, you might expect the VideoCore IV (VC4) GPU to be little more than a standard PC graphics card, managing and accelerating graphical output. While it does perform those actions, the VC4 has much broader responsibilities on the Raspberry Pi. It runs a (real-time) operating system of its own, ThreadX\cite{rpi:opensourcevpu}, and handles system initialization and the early boot process\cite{rpi:bootforum}. It also performs power and clock management\cite{rpi:gpuclockpower}. The way the clock management functions is however conveniently absent from the BCM2835 datasheet.
 
-\chapter{My work}
-\section{Porting \ucosiii to the Raspberry Pi}
+%
+%
+% P O R T I N G
+%
+%
+
+\chapter{Porting \ucosiii to the Raspberry Pi}
+
+\section{\ucos} \label{sec:ucos}
+The real-time operating system that is used in this thesis is called \textit{\ucosiii}. The original version of \ucos was written in 1991, and subsequent versions have been used in a wide variety of applications, among them NASA's Curiosity Rover\footnote{https://www.micrium.com/about/customer-stories/curiosity/}. It is especially suited to this thesis because of the breadth of its documentation. Firstly, an extensive manual \cite{micrium:ucosmanual} is supplied with the source code, and secondly, the source code itself is heavily commented and written with readability in mind.
+
 To run \ucosiii on the Raspberry Pi, there needs to be a version of the operating system that has been adapted to run on the hardware the Pi uses. These adaptations are commonly called \textit{ports}. There are ports to architectures that are similar to that of the Pi, such as the ARM9-based NXP LPC2923 \cite{micrium:nxplpc}, but there is no port for the Broadcom BCM2835, the SoC used by the Pi. As mentioned in section~\ref{sec:ucos}, however, there is an extensive manual supplied with \ucosiii, which includes a chapter on porting it to different architectures. Additionally, a thesis has been written on porting \ucosii to the Pi\cite{sfd:realpi}, and there is a plethora of information available online on bare-metal programming on the Pi. Therefore, I decided porting \ucosiii would be an additional interesting, but doable challenge.
 
-\subsection{The structure of \ucosiii}
+\section{The structure of \ucosiii}
 
 \subsection{The components of a port}
 When porting an operating system to a new platform, there are a number of components that need to be adapted. In the case of our \ucosiii port, the parts that need to be adapted are as follows.
@@ -158,12 +262,13 @@ The type of I/O that the port has support for is very common in embedded devices
 
 On the hardware side, the UART uses GPIO pins 8 and 10\footnote{Pin 14 and 15, respectively, in the Broadcom peripheral datasheet.} for transmit and receive, respectively. Additionally, one of the Pi's ground pins needs to be used to ensure the communicating devices have a common ground.
 
-The process for setting up the UART can be split into a few parts. Firstly, the GPIO pins need to be set up to perform alternate function 0. Subsequently, the baud rate needs to be set
 
 \subsubsection{Interrupts}
 If, like me, you have spent some time playing around with bare-metal development on x86, you may be familiar with x86 interrupt handling. In brief: there are two programmable interrupt controllers, which are used to dispatch interrupts to the CPU. Devices hook into these controllers, and the controllers' interrupt masks can be programmed through software. When an interrupt arrives at the controller, it notifies the CPU by pulling the INTR pin high and sending it a corresponding IRQ number. The CPU then looks into an interrupt vector table, loads the handler address for a given IRQ number, and jumps to it. All of this is a luxury that the ARM architecture on the Pi does not offer us.
 
 ARM uses the term `exception' to mean an event which causes the processor to stop execution and jump to a piece of code to handle it. The ARM architecture supports seven kinds of exceptions: \textit{Reset}, \textit{Undefined Instruction}, \textit{Software Interrupt}, \textit{Prefetch Abort}, \textit{Data Abort}, \textit{Interrupt} (IRQ) and \textit{Fast Interrupt} (FIQ). When an exception is generated, the CPU jumps to an \textit{exception vector} for the given exception. These vectors are usually located at the beginning of the address space, but can be remapped. An overview of exception types, their corresponding processor mode and address that execution starts at after exception reception is given in table~\ref{tbl:exceptions}.
+
+
 
 \begin{table}[h]
     \centering
@@ -188,22 +293,19 @@ ARM uses the term `exception' to mean an event which causes the processor to sto
 As well as jumping to a given address when an exception is generated, the processor changes its mode to one of the seven defined processor execution modes: \textit{User}, \textit{FIQ}, \textit{IRQ}, \textit{Supervisor} (SVC), \textit{Abort} (ABT), \textit{Undefined} (UND) and \textit{System} (SYS). These modes differ from each other in two important respects. Firstly, all modes except for user mode are privileged, i.e. can access all system resources, and can change mode freely.
 
 \subsubsection{Timers}
-Before the introduction of multi-core processors in the early 2000's, computing was largely a single-processor single-core affair (with notable exceptions dating back decades in the enterprise market). Despite this, multitasking was common even before the nineties. This is achieved through rapidly switching between tasks, letting the tasks appear to run in parallel. This switching can be done in cooperation with the tasks; this is  \textit{cooperative multitasking}, where tasks yield control to the operating system voluntarily to allow other tasks to run. This naturally causes problems when tasks do not yield, or do not yield often enough.
+In real-time systems, there obviously needs to be a correspondence between the time as measured in the system and external time. This is where hardware timers come in. The Raspberry Pi provides both running counter functionality (which allows the system to have a clock which counts in microseconds -- though it is not a real-time clock, which would keep an accurate date and time of day across reboots) and timer functionality (so the system is interrupted after a given time is elapsed).
 
-For that reason, cooperative multitasking has largely given way to \textit{pre-emptive} multitasking. In this paradigm, running tasks are periodically interrupted and control is transferred to the operating system, which decides whether the task should be \textit{switched out} so that another task may run, or should keep running. This periodic interruption is facilitated through a timer, which periodically generates a processor interrupt that transfers control to the operating system.
-
-As described in the BCM2835 peripheral data sheet, the Raspberry Pi contains two timers; a timer for the ARM processor itself and a system timer. The ARM timer has issues similar to the `mini UART' described in section~\ref{sec:miniuart}, namely being dependent on the CPU core frequency
+As described in the BCM2835 peripheral data sheet, the Raspberry Pi contains two timers; a timer for the ARM processor itself and a system timer. The ARM timer has issues similar to the `mini UART' described in section~\ref{sec:miniuart}, namely being dependent on the CPU core frequency, and is therefore not used. 
 
 
 \subsubsection{Task switching}
 
-\section{Implementing an adaptive scheduler}
+\chapter{Implementing a new scheduler}
 
 \chapter{Experiments}
 
 \chapter{Conclusions}
 
 \printbibliography
-
 
 \end{document}
