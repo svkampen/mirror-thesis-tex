@@ -60,12 +60,21 @@ To implement a real-time computing system, the entire system can be written from
 
 
 \subsubsection{Research question}
-As described above, predictability is a vital part of real-time systems. Naturally, in systems that consist of multiple tasks, an important factor in guaranteeing task execution within given deadlines is the \textit{task scheduler}. As noted in \textcite{buttazzo2011hard}, however, many real-time kernels lack functionality that guarantees task execution. In many cases, a general priority-based scheduler is implemented, with possible round-robin scheduling functionality. Therefore, in this thesis, I will explore the benefits of guarantee-based scheduling algorithms through both literature analysis and through the implementation of a guarantee-based scheduling algorithm in a real-time operating system, and by evaluating it on real hardware. The research question I am aiming to answer is:
+As described above, predictability is a vital part of real-time systems. Naturally, in systems that consist of multiple tasks, an important factor in guaranteeing task execution within given deadlines is the \textit{task scheduler}. As noted in \textcite{buttazzo2011hard}, however, many real-time kernels lack functionality that guarantees task execution. In many cases, a general priority-based scheduler is implemented, with possible round-robin scheduling functionality. Therefore, in this thesis, I will explore the benefits of guarantee-based scheduling algorithms through both literature analysis and through the implementation of a guarantee-based scheduling algorithm in a real-time operating system (\ucosiii), and by evaluating it on real hardware (a first-generation Raspberry Pi). The research question I am aiming to answer is:
 
 \begin{outline}
     \itemsep=0em
     \1 What is the performance and usability effect of implementing a guarantee-based scheduling algorithm in a real-time operating system, as compared to the commonly implemented priority-based scheduling algorithm?
 \end{outline}
+
+
+%
+%
+% R E L A T E D  W O R K
+%
+%
+
+\chapter{Related work}
 
 %
 %
@@ -230,7 +239,7 @@ Coming from the x86 world, you might expect the VideoCore IV (VC4) GPU to be lit
 \section{\ucos} \label{sec:ucos}
 The real-time operating system that is used in this thesis is called \textit{\ucosiii}. The original version of \ucos was written in 1991, and subsequent versions have been used in a wide variety of applications, among them NASA's Curiosity Rover\footnote{https://www.micrium.com/about/customer-stories/curiosity/}. It is especially suited to this thesis because of the breadth of its documentation. Firstly, an extensive manual \cite{micrium:ucosmanual} is supplied with the source code, and secondly, the source code itself is heavily commented and written with readability in mind.
 
-To run \ucosiii on the Raspberry Pi, there needs to be a version of the operating system that has been adapted to run on the hardware the Pi uses. These adaptations are commonly called \textit{ports}. There are ports to architectures that are similar to that of the Pi, such as the ARM9-based NXP LPC2923 \cite{micrium:nxplpc}, but there is no port for the Broadcom BCM2835, the SoC used by the Pi. As mentioned in section~\ref{sec:ucos}, however, there is an extensive manual supplied with \ucosiii, which includes a chapter on porting it to different architectures. Additionally, a thesis has been written on porting \ucosii to the Pi\cite{sfd:realpi}, and there is a plethora of information available online on bare-metal programming on the Pi. Therefore, I decided porting \ucosiii would be an additional interesting, but doable challenge.
+To run \ucosiii on the Raspberry Pi, there needs to be a version of the operating system that has been adapted to run on the hardware the Pi uses. These adaptations are commonly called \textit{ports}. There are ports to architectures that are similar to that of the Pi, such as the ARM9-based NXP LPC2923 \cite{micrium:nxplpc}, but there is no port for the Broadcom BCM2835, the SoC used by the Pi. As mentioned in section~\ref{sec:ucos}, however, there is an extensive manual supplied with \ucosiii, which includes a chapter on porting it to different architectures. Additionally, there is a plethora of information available online on bare-metal programming on the Pi. Therefore, I decided porting \ucosiii would be an additional interesting, but doable challenge.
 
 \section{The structure of \ucosiii}
 
@@ -303,6 +312,31 @@ As described in the BCM2835 peripheral data sheet, the Raspberry Pi contains two
 \chapter{Implementing a new scheduler}
 
 \chapter{Experiments}
+First, some baseline results. For these results, 
+
+\section{Task switch time}
+The time taken to switch between tasks is evaluated, for both round-robin task switching and normal inter-priority task switching.
+
+\subsection{\ucosiii scheduler: round-robin task switch time}
+A histogram of task switch time for round-robin task switching can be seen in figure~\ref{fig:rrhist}. A clear primary peak is visible around 9µs. One cause of the outliers is the tick interrupt occurring every 100 Hz. Another has to do with the number of round-robin tasks: every $n$ task switches after some number of ticks, an outlier is produced.
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=\textwidth]{task_switch_time.eps}
+    \caption{A histogram of task switch time between round-robin tasks (mean 7.8µs; std. dev. 0.86µs). Total samples:  }
+    \label{fig:rrhist}
+\end{figure}
+
+\subsection{\ucosiii scheduler: task switch time as the number of priorities increases}
+
+As the number of priorities increases, the size of the priority bitmap increases linearly. Since we search the priority bitmap each time we perform a task switch, we would expect task switch time to increase linearly as well. In figure~\ref{fig:prioboxplot}, a set of box plots of task switch time is shown, for a varying number of priorities. For each number of priorities, 32 tasks were spaced evenly in the priority space, and the time to switch between them was measured for each task switch for a duration of five seconds. As expected, the mean task switch time increases linearly (visible as a curved line in this log-log plot due to the non-zero y-intercept). Additionally, the variance increases greatly as the number of priorities increases.
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.8\textwidth]{boxplot.eps}
+    \caption{Box plots of task switch time as the number of priorities increases. Since task switches were measured over a fixed period of time, the number of samples for each box plot varies, from a minimum of 167,087 to a maximum of 343,821.}
+    \label{fig:prioboxplot}
+\end{figure}
 
 \chapter{Conclusions}
 
