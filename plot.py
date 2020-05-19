@@ -13,7 +13,7 @@ def timelineplot(fname, stop_time, tasks, tick_delta):
             axes.spines[spine].set_visible(False)
         labels = ['']*stop_time
 
-        axes.text(-2, 0.5, f"${task['name']}$")
+        axes.text(-2, 0.5, f"${task['name']}$", fontsize='x-large')
 
         if (task['type'] == 'periodic'):
             for i in range(task['activation_start'], stop_time, task['activation_delta']):
@@ -49,3 +49,8 @@ timelineplot("edfdeadline.eps",
         22, [task(r"\tau_1", ((0,1), (3,4), (6,7), (10, 11), (12, 13), (15,16), (18,19)), 3),
              task(r"\tau_2", ((1,3), (4,6), (8,10), (13,15), (16,18)), 4),
              job(r"j_k", ((7,8), (11,12)), 2, 14)], 2)
+
+timelineplot("optimaldeadline.eps",
+        22, [task(r"\tau_1", ((0,1), (5,6), (8,9), (11,12), (12,13), (15,16), (18,19)), 3),
+             task(r"\tau_2", ((1,3), (6,8), (9,11), (13,15), (16,18)), 4),
+             job(r"j_k", ((3,5),), 2, 5)], 2)
