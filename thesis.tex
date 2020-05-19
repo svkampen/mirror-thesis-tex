@@ -15,11 +15,17 @@
 \addbibresource{refs.bib}
 
 \usepackage{fontspec}
-%\setmainfont[Ligatures={Common,TeX}]{Adobe Caslon Pro}
-%\setsansfont{Source Sans Pro}
+\setmainfont[Ligatures={Common,TeX}]{Adobe Caslon Pro}
+\setsansfont{Source Sans Pro}
+\setmonofont{Iosevka}
+\usepackage{listings}
 
+\lstset{language=C,basicstyle=\small\ttfamily}
+
+\newcommand{\code}[1]{\lstinline{#1}}
 \newcommand{\ucosiii}{\textmu C/OS-III\xspace}
 \newcommand{\ucosii}{\textmu C/OS-II\xspace}
+\newcommand{\ucpu}{\textmu C/CPU\xspace}
 \newcommand{\ucos}{\textmu C/OS\xspace}
 \newcommand{\task}[1]{\ensuremath{\tau_#1}}
 
@@ -31,7 +37,7 @@
 
 \tolerance=2000
 
-\title{Predictable, guarantee-based\\ scheduling in Real-Time\\Operating Systems}
+\title{Predictable, guarantee-based\\ scheduling in the \ucosiii\\ real-time operating system}
 \author{Sam van Kampen}
 \supervisors{T. Walstra}
 \signedby{Signees}
@@ -41,6 +47,7 @@
 \maketitle
 
 \begin{abstract}
+    In this thesis, the performance and utility of Earliest Deadline First scheduling in combination with the Total Bandwidth Server is evaluated  in the \ucosiii real-time operating system on a first-generation Raspberry Pi, and contrasted with \ucosiii's default, priority-based scheduler.
 \end{abstract}
 
 \tableofcontents
@@ -58,6 +65,11 @@ Due to the focus of real-time systems on executing actions within a given time f
 
 To implement a real-time computing system, the entire system can be written from the ground up, without using any existing code. This can often be costly in terms of time, however. In order to facilitate quick development of real-time systems, `general-purpose' real-time operating systems have been developed, which contain facilities like task management, mutual exclusion primitives, et cetera.
 
+\subsubsection{\ucos} \label{sec:ucos}
+The real-time operating system that is used in this thesis is called \textit{\ucosiii}. The original version of \ucos was written in 1991, and subsequent versions have been used in a wide variety of applications, among them NASA's Curiosity Rover\footnote{https://www.micrium.com/about/customer-stories/curiosity/}. It is especially suited to this thesis because of the breadth of its documentation: firstly, an extensive manual \cite{micrium:ucosmanual} is supplied with the source code, and secondly, the source code itself is heavily commented and written with readability in mind.
+
+\subsubsection{Raspberry Pi}
+The hardware used to run \ucosiii and evaluate the scheduling strategy detailed in this thesis is a first-generation Raspberry Pi. More about the hardware can be found in chapter~\ref{chp:hardware}.
 
 \subsubsection{Research question}
 As described above, predictability is a vital part of real-time systems. Naturally, in systems that consist of multiple tasks, an important factor in guaranteeing task execution within given deadlines is the \textit{task scheduler}. As noted in \textcite{buttazzo2011hard}, however, many real-time kernels lack functionality that guarantees task execution. In many cases, a general priority-based scheduler is implemented, with possible round-robin scheduling functionality. Therefore, in this thesis, I will explore the benefits of guarantee-based scheduling algorithms through both literature analysis and through the implementation of a guarantee-based scheduling algorithm in a real-time operating system (\ucosiii), and by evaluating it on real hardware (a first-generation Raspberry Pi). The research question I am aiming to answer is:
@@ -68,6 +80,11 @@ As described above, predictability is a vital part of real-time systems. Natural
 \end{outline}
 
 
+\subsubsection{Data availability}
+All data and code used in the production of this thesis is available online, with instructions on how to run the experiments on real hardware, at \url{https://github.com/svkampen/thesis}.
+
+
+
 %
 %
 % R E L A T E D  W O R K
@@ -75,6 +92,19 @@ As described above, predictability is a vital part of real-time systems. Natural
 %
 
 \chapter{Related work}
+Running \ucos on the Raspberry Pi has been explored earlier, most notably in a thesis by \textcite{sfd:realpi}, which details the porting of \ucosii to a number of different versions of the Pi. The port in this work differs, both in the operating system version used and the hardware used on the Pi, most notably when it comes to the choice of UART and timer.
+
+On the topic of scheduling in \ucos specifically, not much research seems to have been done - perhaps due to its lack of open-source licensing. Nevertheless, there is some interesting work in this area.
+
+\textcite{tue:hfs} describe a two-level hierarchical scheduling framework, which allows system designers to partition system tasks into subsystems which have their own scheduling budget and strategy. The framework is subsequently implemented and evaluated on hardware running \ucosii. 
+
+\textcite{Cho2011} define a scheduling algorithm for \ucosii which mixes its default priority-based scheduler with Earliest Deadline First in a best-effort configuration, and uses deadline misses as a metric to perform dynamic voltage and frequency scaling (DVFS).
+
+\textcite{dodiu2010} adapt \ucosii scheduling to be interrupt-priority-aware, in the sense that tasks are given interrupt masks which are switched out on context switch. This way, high-priority tasks are not interrupted by an interrupt associated with a lower-priority task.
+
+When it comes to scheduling more generally, there is a breadth of research to explore.
+
+\textcite{salmani2005modified} describe the Modified Maximum Urgency First scheduling algorithm, which improves upon the Earliest Deadline First algorithm used in this thesis by improving transient overload handling. A version of this algorithm adapted for distributed real-time systems is discussed in \textcite{chen2006flexible}, and extensions to the algorithm are explored in \textcite{behera2012enhanced}.
 
 %
 %
@@ -114,13 +144,13 @@ Scheduling algorithms usually make decisions on which task to schedule based on 
     \1 A task's \textbf{lateness} ($L_i$) is the difference between the task's absolute deadline and its finishing time.
 \end{outline}
 
-\section{Periodic scheduling algorithms}
-First, we'll discuss scheduling algorithms which work on periodic task sets. In these task sets, tasks have to be executed at regular intervals. These intervals
-
+\section{Static scheduling algorithms}
 As mentioned in the list of scheduling algorithm characteristics, \emph{static scheduling algorithms} do not take varying system behavior into account, and make use of characteristics that are known at system start. 
 
 \subsection{Rate Monotonic}
-\emph{Rate Monotonic} is a scheduling algorithm for periodic task sets which assigns priorities based on the frequency of the task. Id est, if the task needs to run more often, it gets a higher priority.
+\emph{Rate Monotonic} is a scheduling algorithm for periodic task sets which assigns priorities based on the frequency of the task. Id est, if the task needs to run more often, it gets a higher priority.Rate Monotonic is a fixed-priority assignment, so task priorities do not change over time. \textcite{Liu1973} proved the optimality of Rate Monotonic among fixed-priority assignments.
+
+One issue when using Rate Monotonic-based scheduling is its low upper bound on processor utilization; As the number of tasks $n$ tends to infinity, the maximum processor utilization which will yield a valid RM schedule tends to $\ln 2 \approx 0.69$.
 
 \section{Dynamic scheduling algorithms}
 
@@ -145,7 +175,7 @@ One characteristic of the scheduling algorithms that have been discussed in the 
 The idea behind many of these algorithms is to compute the processor utilization of the periodic task set, and set aside the rest of the processor utilization to be used by a so-called \emph{task server}, which handles aperiodic requests. The processor utilization set aside for the server, denoted $U_s$, is often called the \emph{bandwidth} of the server.
 
 \subsection{Background Scheduling}
-The simplest way of scheduling 
+The simplest way of scheduling aperiodic tasks is through \emph{Background Scheduling} - simply running them when the system would otherwise be idle. One obvious downside is the large possible aperiodic task response time; periodic tasks which could be postponed while still meeting their deadlines are instead run earlier than they have to be.
 
 \subsection{Total Bandwidth Server}
 The \emph{Total Bandwidth Server} is a server for aperiodic jobs which is used in conjunction with the EDF algorithm. When an aperiodic job $j_k$ enters the system, at $t = a_k$, it receives a deadline
@@ -157,8 +187,7 @@ where $U_s$ is the server bandwidth and $C_k$ is the job's worst-case execution 
 After this deadline is assigned, the job is scheduled by the EDF algorithm, as are the periodic tasks in the system.
 
 \subsubsection{Optimizing TBS: deadline advancement}
-
-Note that this deadline is pessimistic, in the sense that it could be set earlier, improving aperiodic response time, if the finishing time of $j_k$, $f_k$, is earlier than its assigned deadline. This can occur depending on when periodic tasks are scheduled, since the deadline accounts for the worst-case finishing time given the processor utilization used by periodic tasks. For instance, let us take the situation in figure~\ref{fig:tbsworstdeadline}. Here, we have periodic processor utilization $U_p = \frac{5}{6}$, and server bandwidth $U_s = \frac{1}{6}$. The deadline assigned to $j_k$, which has computation time $C_k = 2$ and arrives at $t = 2$, is therefore $d_k = 2 + \frac{C_k}{U_s} = 14$. Due to the strange (non-EDF) periodic schedule, it also finishes at $t = 14$. EDF, with deadline $d_k = 14$, produces a schedule where $j_k$ finishes at $f_k = 12$ (fig. \ref{fig:tbsedfdeadline}). Knowing this, we could set its deadline to $12$. However, if we then recompute its EDF schedule, we will find that the task finishes even earlier. This process can be repeated to find $j_k$'s earliest finishing time, $f^*_k$, which turns out to be $5$. As you can see, the response time of $j_k$ can be greatly improved, without jeopardizing periodic tasks. This does, however, add computational complexity, due to the fact that evaluating $f^*_k$ requires (repeatedly) computing the EDF schedule up to the finishing time of $j_k$.
+Note that this deadline is pessimistic, in the sense that it could be set earlier, improving aperiodic response time, if the finishing time of $j_k$, $f_k$, is earlier than its assigned deadline. This can occur depending on when periodic tasks are scheduled, since the deadline accounts for the worst-case finishing time given the processor utilization used by periodic tasks. For instance, let us take the situation in figure~\ref{fig:tbsworstdeadline}. Here, we have periodic processor utilization $U_p = \frac{5}{6}$, and server bandwidth $U_s = \frac{1}{6}$. The deadline assigned to $j_k$, which has computation time $C_k = 2$ and arrives at $t = 2$, is therefore $d_k = 2 + \frac{C_k}{U_s} = 14$. Due to the strange (non-EDF) periodic schedule, it also finishes at $t = 14$. EDF, with deadline $d_k = 14$, produces a schedule where $j_k$ finishes at $f_k = 12$ (fig. \ref{fig:tbsedfdeadline}). Knowing this, we could set its deadline to $12$. However, if we then recompute its EDF schedule, we will find that the task finishes even earlier. This process can be repeated to find $j_k$'s earliest finishing time, $f^*_k$, which turns out to be $5$, as can be seen in figure~\ref{fig:tbsoptimaldeadline}. As you can see, the response time of $j_k$ can be greatly improved, without jeopardizing periodic tasks. This does, however, add computational complexity, due to the fact that evaluating $f^*_k$ requires (repeatedly) computing the EDF schedule up to the finishing time of $j_k$.
 
 \begin{figure}[htpb]
     \centering
@@ -169,18 +198,31 @@ Note that this deadline is pessimistic, in the sense that it could be set earlie
 
 \begin{figure}[htpb]
     \centering
-    \includegraphics[width=0.8\textwidth]{edfdeadline.eps}
+    \includegraphics[width=0.85\textwidth]{edfdeadline.eps}
     \caption{The situation produced by EDF, where $f_k$ = 12.}
     \label{fig:tbsedfdeadline}
 \end{figure}
 
-\section{Scheduling in \ucosiii}
-Just as in many real-time operating systems, the scheduler used in \ucosiii is a generic priority-based scheduler. The priorities are assigned at task creation, but there is optional support for changing priorities at run-time. The number of priority levels is configurable at compile time.
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.8\textwidth]{optimaldeadline.eps}
+    \caption{The situation where $j_k$ finishes at the earliest possible time.}
+    \label{fig:tbsoptimaldeadline}
+\end{figure}
 
-There is optional support for round-robin scheduling -- if it is active, tasks can be created with the same priority, and if multiple tasks are ready at a given priority level, they are each run for a given time quantum (but can yield earlier).
+\section{Scheduling in \ucosiii}
+Just as in many real-time operating systems, the scheduler used in \ucosiii is a generic priority-based scheduler. In these schedulers, tasks are assigned priorities and the scheduler simply runs the highest priority ready task. The priorities are assigned at task creation, but there is optional support for changing priorities at run-time. The number of priority levels is configurable at compile time.
+
+There is optional support for round-robin scheduling. If it is enabled and multiple tasks are ready at a given priority level, in a cyclical fashion, each task is run for a time quantum, which is configurable at task creation time.
 
 The flexibility in the number of priority levels seems to suggest that many dynamic scheduling algorithms (such as EDF) could be built on top of this priority-based scheduler. Every additional priority level, however, brings a memory cost with it. \ucos uses a \textit{priority bitmap} (see fig.~\ref{fig:priobitmap}) to keep track of which priorities have associated ready tasks, and each priority has its own ready list. This diminishes the flexibility of the scheduler, but improves the scheduling performance in the case where the number of priorities is fairly low.
 
+\section{Worst-case Execution Time Analysis}
+One of the task parameters which is essential when guarantee-based scheduling is applied is the worst-case execution time of a task. The worst-case execution time needs to be accurately determined, as an underestimation can induce invalid guarantees. Additionally, a pessimistic worst-case execution time will cause the system to reject task sets which may have been feasible in practice. This raises the question: how can worst-case execution times be accurately determined?
+
+Worst-case execution time analysis is a whole discipline unto itself, with a range of analytical and measurement-based approaches. Ideally, a mix of analytical and measurement-based approaches is used, as analytical static analysis often fails to take into account run-time behavior such as caching, while a purely measurement-based approach may be limited due to the rare occurrence of extremely long execution times.
+
+\textcite{hansen_et_al:wcet} detail a method of determining worst-case execution times based on a fusion of measurement-based and analytical approaches. The method makes use of Extreme Value Theory (EVT), a branch of mathematics which is concerned with reasoning about the tail end of distributions. Using EVT, the paper posits that the so-called \emph{block maxima} of execution times are distributed according to the Generalized Extreme Value distribution\footnote{A similar concept which the reader may be familiar with is the Central Limit Theorem, which states that, under certain conditions, sample means are normally distributed.}, and the parameters of that distribution can be fit to sample data. Using the distribution, a probabilistic worst-case execution time can then be determined, along with a probability that the execution time is exceeded.
 
 \begin{figure}[htpb]
     \centering
@@ -189,7 +231,7 @@ The flexibility in the number of priority levels seems to suggest that many dyna
     \label{fig:priobitmap}
 \end{figure}
 
-\subsection{The scheduling implementation}
+%\subsection{The scheduling implementation}
 
 %
 %
@@ -197,7 +239,7 @@ The flexibility in the number of priority levels seems to suggest that many dyna
 %
 %
 
-\chapter{Hardware}
+\chapter{Hardware} \label{chp:hardware}
 Real-time operating systems run on a broad range of hardware. Running tests on all of this different hardware is, of course, impossible. For this thesis, I have chosen to use a piece of hardware which exemplifies a number of characteristics of real-time systems, but which is also readily available and well-documented: a first-generation Raspberry Pi.
 
 \section{The Raspberry Pi 1B}
@@ -213,7 +255,7 @@ The hardware used in this thesis is a Raspberry Pi 1B, a single-board computer f
     \1 Ethernet, USB, HDMI and composite out, et cetera.
 \end{outline}
 
-The Pi has a number of desirable characteristics that make it suitable for use in this thesis. Firstly, it uses a low-power ARM processor, an architecture which is very common in embedded systems (with a market share of 37\% at the end of 2014 \cite{arm:embeddedmarketshare}). Additionally, its GPIO pins and their support for serial I/O allow for a simple way of interacting with the Raspberry Pi without having to implement, say, a USB driver. Such serial connections are also very common in embedded systems. Lastly, due to the popularity of the Pi, it is fairly well-documented. The datasheet that describes the hardware in the Raspberry Pi and how to interface with it is freely available\cite{bcm:2835peripherals}, and although it does contain the customary datasheet errors, there is a thorough list of errata available online\cite{bcm:2835errata}. Where the datasheet has omissions, there is also often information available online.
+The Pi has a number of desirable characteristics that make it suitable for use in this thesis. Firstly, it uses a low-power ARM processor, an architecture which is very common in embedded systems (with a market share of 37\% at the end of 2014 \cite{arm:embeddedmarketshare}). Additionally, its GPIO pins and their support for serial I/O allow for a simple way of interacting with the Raspberry Pi without having to implement USB or ethernet drivers. Such serial connections are also very common in embedded systems. Lastly, due to the popularity of the Pi, it is fairly well-documented. The datasheet that describes the hardware in the Raspberry Pi and how to interface with it is freely available\cite{bcm:2835peripherals}, and although it is occasionally inaccurate, there is a thorough list of errata available online\cite{bcm:2835errata}. Where the datasheet has omissions, there is also often information available online.
 
 \subsection{General Purpose I/O}
 As described above, the Raspberry Pi has 26 general purpose I/O pins. Some of these pins have a fixed function, but many have multiple functions, and which one a pin uses can be controlled by software. An overview of the 26-pin header and the functions of its pins can be seen in figure~\ref{fig:gpiopinout}. One thing of note is the fact that the pin numbering used on the header is not the same as is used in the BCM2835 peripherals manual; for instance, pin 7 on the header is GPIO pin 4 in the data sheet.
@@ -235,49 +277,28 @@ Coming from the x86 world, you might expect the VideoCore IV (VC4) GPU to be lit
 %
 
 \chapter{Porting \ucosiii to the Raspberry Pi}
-
-\section{\ucos} \label{sec:ucos}
-The real-time operating system that is used in this thesis is called \textit{\ucosiii}. The original version of \ucos was written in 1991, and subsequent versions have been used in a wide variety of applications, among them NASA's Curiosity Rover\footnote{https://www.micrium.com/about/customer-stories/curiosity/}. It is especially suited to this thesis because of the breadth of its documentation. Firstly, an extensive manual \cite{micrium:ucosmanual} is supplied with the source code, and secondly, the source code itself is heavily commented and written with readability in mind.
-
-To run \ucosiii on the Raspberry Pi, there needs to be a version of the operating system that has been adapted to run on the hardware the Pi uses. These adaptations are commonly called \textit{ports}. There are ports to architectures that are similar to that of the Pi, such as the ARM9-based NXP LPC2923 \cite{micrium:nxplpc}, but there is no port for the Broadcom BCM2835, the SoC used by the Pi. As mentioned in section~\ref{sec:ucos}, however, there is an extensive manual supplied with \ucosiii, which includes a chapter on porting it to different architectures. Additionally, there is a plethora of information available online on bare-metal programming on the Pi. Therefore, I decided porting \ucosiii would be an additional interesting, but doable challenge.
+To run \ucosiii on the Raspberry Pi, the operating system needs to be adapted to run on the hardware the Pi uses. These adaptations are commonly called \textit{ports}. There are ports to architectures that are similar to that of the Pi, such as the ARM9-based NXP LPC2923 \cite{micrium:nxplpc}, but there is no port for the Broadcom BCM2835, the SoC used by the Pi. This work includes such a port.
 
 \section{The structure of \ucosiii}
+The majority of \ucosiii is written as processor-independent C code, and can therefore be re-used in the port verbatim. Fragments of the operating system whose implementation is highly dependent on the target hardware, such as task switching or interaction with hardware timers, are implemented in separate source files. There is a CPU-specific component, \ucpu, which specifies CPU features such as the availability of a count-leading-zeros instruction, endianness, the size of data types such as timestamps, addresses, et cetera. Separately, OS-specific components such as task switching functions are defined. Lastly, a `Board Support Package' is defined, which contains the functionality that interacts with the on-board components such as the hardware timer and handles interrupts.
 
-\subsection{The components of a port}
-When porting an operating system to a new platform, there are a number of components that need to be adapted. In the case of our \ucosiii port, the parts that need to be adapted are as follows.
+Of particular interest to the scheduler are the timer and the interrupt handling code.
 
-\begin{itemize}
-    \item Architectural features
-    \item Interrupt handling
-    \item Timers
-    \item Serial I/O
-\end{itemize}
+\subsection{Timers}
+In real-time systems, there obviously needs to be a correspondence between the time as measured in the system and external time. This is where hardware timers come in. The Raspberry Pi provides both running counter functionality (which allows the system to have a clock -- though it is not a real-time clock, which would keep an accurate date and time of day across reboots) and timer functionality (so the system is interrupted after a given time is elapsed).
 
+As described in the BCM2835 peripheral data sheet, the Raspberry Pi contains two timers; a timer for the ARM processor itself and a system timer. Although \textcite{sfd:realpi} opts to use the ARM timer, the peripheral data sheet tells us\cite[p. 196]{bcm:2835peripherals} that the timer frequency is dependent on the system clock frequency, which may vary as the system goes into low-power mode. Therefore, to get an accurate clock, the system timer is used.
 
+The system timer has microsecond resolution\footnote{Although the ARM timer has a higher frequency, it is not useful to us as the time taken to switch between tasks is already in the microsecond range.}, and consists of a 64-bit running counter and four 32-bit timer channels. These timer channels have a corresponding match register, which contains a 32-bit value that is compared with the running counter, triggering an interrupt when the lowest 32 bits of the running counter match the register value.
 
-\subsubsection{Architectural features}
-In this part of the port, various features of the architecture are described. This consists of attributes such as the size of various data types, the availability of certain instructions and the modes of operation of certain features. More concretely, examples include:
+Two of the timer channels are in use by the VideoCore IV GPU, and are therefore not usable. Timer channel 1 and 3 are, however, available. We only need a single timer channel, and currently use timer channel 1.
 
-\begin{itemize}
-    \item The size of the processor's address bus.
-    \item Whether the processor includes a count-leading-zeros instruction.
-    \item Whether the processor stack grows upwards or downwards.
-\end{itemize}
+\subsection{Interrupts}
+As discussed in the previous section, the hardware timer can trigger an interrupt when a timer channel is matched. The system timer is one of the hardware components which is poorly described in the peripheral data sheet, but information found online can close that gap.
 
-\subsubsection{Serial I/O} \label{sec:miniuart}
-Implementing input/output capabilities is not strictly required to get \ucosiii running on the Raspberry Pi. An operating system is of little user without any I/O capabilities, however, and being able to output debugging information is also of great use in porting. 
-
-The type of I/O that the port has support for is very common in embedded devices, and was used throughout much of the twentieth century for communication between computers and associated terminals: serial communication using a UART. The peripheral data sheet tells us that the Raspberry Pi contains two UARTs, a primary ARM PL011 UART and a secondary so-called `mini UART'. Our port uses the primary UART, as the baud rate of the secondary UART is linked to the VPU core frequency, which is variable by default, making the secondary UART `of limited use in the default state' \cite{rpi:uart}, and it has a number of other deficiencies described in \cite{bcm:2835peripherals}.
-
-On the hardware side, the UART uses GPIO pins 8 and 10\footnote{Pin 14 and 15, respectively, in the Broadcom peripheral datasheet.} for transmit and receive, respectively. Additionally, one of the Pi's ground pins needs to be used to ensure the communicating devices have a common ground.
-
-
-\subsubsection{Interrupts}
-If, like me, you have spent some time playing around with bare-metal development on x86, you may be familiar with x86 interrupt handling. In brief: there are two programmable interrupt controllers, which are used to dispatch interrupts to the CPU. Devices hook into these controllers, and the controllers' interrupt masks can be programmed through software. When an interrupt arrives at the controller, it notifies the CPU by pulling the INTR pin high and sending it a corresponding IRQ number. The CPU then looks into an interrupt vector table, loads the handler address for a given IRQ number, and jumps to it. All of this is a luxury that the ARM architecture on the Pi does not offer us.
+Interrupt handling in the ARM architecture differs significantly from similar features in the x86 architecture. Where the latter uses an interrupt vector table which dispatches a specific interrupt to a specific interrupt service routine, the former uses a much more generic approach.
 
 ARM uses the term `exception' to mean an event which causes the processor to stop execution and jump to a piece of code to handle it. The ARM architecture supports seven kinds of exceptions: \textit{Reset}, \textit{Undefined Instruction}, \textit{Software Interrupt}, \textit{Prefetch Abort}, \textit{Data Abort}, \textit{Interrupt} (IRQ) and \textit{Fast Interrupt} (FIQ). When an exception is generated, the CPU jumps to an \textit{exception vector} for the given exception. These vectors are usually located at the beginning of the address space, but can be remapped. An overview of exception types, their corresponding processor mode and address that execution starts at after exception reception is given in table~\ref{tbl:exceptions}.
-
-
 
 \begin{table}[h]
     \centering
@@ -298,31 +319,77 @@ ARM uses the term `exception' to mean an event which causes the processor to sto
     \label{tbl:exceptions}
 \end{table}
 
-\subsubsection{Processor modes}
-As well as jumping to a given address when an exception is generated, the processor changes its mode to one of the seven defined processor execution modes: \textit{User}, \textit{FIQ}, \textit{IRQ}, \textit{Supervisor} (SVC), \textit{Abort} (ABT), \textit{Undefined} (UND) and \textit{System} (SYS). These modes differ from each other in two important respects. Firstly, all modes except for user mode are privileged, i.e. can access all system resources, and can change mode freely.
+In effect, processor faults and software interrupts have their own exception, and all `normal' device interrupts are coalesced into the `interrupt' and `fast interrupt' exceptions. The exception handling code, then, is tasked with determining which device caused the interrupt. The means of determining the interrupting device differ, as they often rely on hardware-provided memory-mapped registers. This is no different on the Raspberry Pi -- the peripheral data sheet details the interrupt mechanism in some detail on page 109. The peripheral data sheet however fails to mention the interrupt number assigned to the system timer. Some sleuthing reveals that the system timer channels are mapped at the start of the interrupt numbers, so IRQ 0 refers to the first timer channel, IRQ 1 to the second, et cetera.
 
-\subsubsection{Timers}
-In real-time systems, there obviously needs to be a correspondence between the time as measured in the system and external time. This is where hardware timers come in. The Raspberry Pi provides both running counter functionality (which allows the system to have a clock which counts in microseconds -- though it is not a real-time clock, which would keep an accurate date and time of day across reboots) and timer functionality (so the system is interrupted after a given time is elapsed).
+As mentioned, the interrupts are handled either by the `fast interrupt' handler or the normal `interrupt' handler. The BCM2835 allows the systems programmer to route a single interrupt source to the fast interrupt vector, which has more banked registers and therefore allows for faster interrupt processing. This is not used in the port currently, as it would complicate the task switching code, which can currently use the same assembly for returning to voluntarily yielded code and interrupted code.
 
-As described in the BCM2835 peripheral data sheet, the Raspberry Pi contains two timers; a timer for the ARM processor itself and a system timer. The ARM timer has issues similar to the `mini UART' described in section~\ref{sec:miniuart}, namely being dependent on the CPU core frequency, and is therefore not used. 
+\subsection{Serial I/O} \label{sec:miniuart}
+Implementing input/output capabilities is not strictly required to get \ucosiii running on the Raspberry Pi. An operating system is of little use without any I/O capabilities, however, and being able to output debugging information is also of great use in porting.
 
+The type of I/O that the port has support for is very common in embedded devices, and was used throughout much of the twentieth century for communication between computers and associated terminals: serial communication using a UART. The peripheral data sheet tells us that the Raspberry Pi contains two UARTs, a primary ARM PL011 UART and a secondary so-called `mini UART'. For reasons similar to the reasons we use the system timer, this port uses the primary UART: the baud rate of the secondary UART is linked to the VPU core frequency, which is variable by default, making the secondary UART `of limited use in the default state' \cite{rpi:uart}, and it has a number of other deficiencies described in \cite{bcm:2835peripherals}.
 
-\subsubsection{Task switching}
+On the hardware side, the UART uses GPIO pins 8 and 10\footnote{Pin 14 and 15, respectively, in the Broadcom peripheral datasheet.} for transmit and receive, respectively. Additionally, one of the Pi's ground pins needs to be used to ensure the communicating devices have a common ground.
+
+%\subsubsection{Processor modes}
+%As well as jumping to a given address when an exception is generated, the processor changes its mode to one of the seven defined processor execution modes: \textit{User}, \textit{FIQ}, \textit{IRQ}, \textit{Supervisor} (SVC), \textit{Abort} (ABT), \textit{Undefined} (UND) and \textit{System} (SYS). These modes differ from each other in two important respects. Firstly, all modes except for user mode are privileged, i.e. can access all system resources, and can change mode freely.
+
+%\subsubsection{Task switching}
+
+%
+%
+% I M P L E M E N T A T I O N
+%
+%
 
 \chapter{Implementing a new scheduler}
+The scheduling algorithm implemented for this thesis is the \emph{Earliest Deadline First} algorithm, along with a \emph{Total Bandwidth Server} for non-real-time aperiodic jobs.
+
+\section{Determining EDF parameters for system tasks}
+In the process of rewriting \ucosiii to make use of the EDF scheduler, the problem of determining EDF parameters for some key system tasks surfaced.
+
+\section{Data structures}
+In \ucosiii, tasks are represented by \code{OS_TCB} objects, which contain information such as the task's stack pointer, entry point, the next and previous task in its ready list, et cetera. The EDF scheduler adds the following attributes to the task objects:
+
+\begin{itemize}
+    \item \code{EDFPeriod} -- The period of the task, in timer ticks.
+    \item \code{EDFCurrentActivationTime} -- The activation time of the current instance of the task, in microseconds.
+    \item \code{EDFRelativeDeadline} -- The deadline of the task relative to its activation time, in microseconds.
+    \item \code{EDFWorstCaseExecutionTime} -- The worst-case execution time of the task, in microseconds.
+    \item \code{EDFHeapIndex} -- The EDF heap index associated with the task.
+\end{itemize}
+
+The period is represented in timer ticks rather than microseconds due to the fact that the task can only be activated by the tick task - supporting other periods would be misleading.
+
+To efficiently determine the task with the earliest deadline, tasks should be stored in a data structure which supports quick access to some 'minimal' element. The data structure most obviously suited to this is the min-heap, providing $O(\log n)$ insertion, $O(n)$ arbitrary element deletion, $O(\log n)$ minimal element deletion and $O(1)$ minimal element lookup. Additionally, in exchange for increased memory usage, arbitrary element deletion can be done in $O(\log n)$, by keeping a reverse mapping from element to heap index (\code{EDFHeapIndex}).
+
+The heap is implemented as an implicit data structure, being little more than an array of \code{OS_TCB*} elements with operations defined on it.
+
+\section{The scheduler implementation}
+Luckily for us, the scheduling code in \ucosiii is fairly well abstracted from the rest of the code. There are some places where direct access to priorities or ready lists is used - in some of these cases, code could easily be patched out to make use of equivalent EDF heap functions, in other cases (such as the mutex priority inversion prevention code), the corresponding features were simply disabled. The features provided by mutexes, specifically, are not compatible with the EDF guarantees as they are implemented here, and so are a prime candidate for disabling.
+
+In the end, the only functions which were wholly patched (and can be found in \code{source/sched_edf.c} in the repository associated with this thesis) are \code{OSTaskCreate}, \code{OSSched}, \code{OS_TaskBlock}, \code{OS_TaskRdy} and \code{OSIntExit}.
+
+\section{Implementation constraints}
+As it stands, the implementation uses a fixed-size heap, and can therefore only accommodate a fixed number of tasks. Dynamic expansion of the heap could be implemented, but could incur significant, hard-to-predict runtime overhead.
+
+%
+%
+% E X P E R I M E N T S
+%
+%
 
 \chapter{Experiments}
-First, some baseline results. For these results, 
+First, some baseline results. For these results,
 
 \section{Task switch time}
 The time taken to switch between tasks is evaluated, for both round-robin task switching and normal inter-priority task switching.
 
 \subsection{\ucosiii scheduler: round-robin task switch time}
-A histogram of task switch time for round-robin task switching can be seen in figure~\ref{fig:rrhist}. A clear primary peak is visible around 9µs. One cause of the outliers is the tick interrupt occurring every 100 Hz. Another has to do with the number of round-robin tasks: every $n$ task switches after some number of ticks, an outlier is produced.
+A histogram of task switch time for round-robin task switching can be seen in figure~\ref{fig:rrhist}. A clear primary peak is visible around 8µs. However, larger task switch times do occur. One explanation for them lies in the tick interrupt, which has been set to occur once every 10,000 microseconds (100Hz). This interrupt suspends the task for a small amount of time, thus resulting in a larger task switch time. Another phenomenon, whose cause is not entirely clear, has something to do with the number of round-robin tasks:  One cause of the outliers is the tick interrupt occurring every 100 Hz. Another has to do with the number of round-robin tasks: every $n$ task switches after some number of ticks, an outlier is produced.
 
 \begin{figure}[htpb]
     \centering
-    \includegraphics[width=\textwidth]{task_switch_time.eps}
+    \includegraphics[width=0.8\textwidth]{task_switch_time.eps}
     \caption{A histogram of task switch time between round-robin tasks (mean 7.8µs; std. dev. 0.86µs). Total samples:  }
     \label{fig:rrhist}
 \end{figure}
@@ -338,7 +405,14 @@ As the number of priorities increases, the size of the priority bitmap increases
     \label{fig:prioboxplot}
 \end{figure}
 
+\chapter{Discussion}
+
 \chapter{Conclusions}
+
+As discussed in the introduction, guaranteeing
+
+\section{Further Research}
+
 
 \printbibliography
 
