@@ -20,7 +20,7 @@
 \setmonofont{Iosevka}
 \usepackage{listings}
 
-\lstset{language=C,basicstyle=\small\ttfamily}
+\lstset{language=[ARM]Assembler,numbers=left,basicstyle=\small\ttfamily}
 
 \newcommand{\code}[1]{\lstinline{#1}}
 \newcommand{\ucosiii}{\textmu C/OS-III\xspace}
@@ -44,11 +44,13 @@
 
 
 \begin{document}
+
 \maketitle
 
 \begin{abstract}
     In this thesis, the performance and utility of Earliest Deadline First scheduling in combination with the Total Bandwidth Server is evaluated  in the \ucosiii real-time operating system on a first-generation Raspberry Pi, and contrasted with \ucosiii's default, priority-based scheduler.
 \end{abstract}
+
 
 \tableofcontents
 
@@ -103,6 +105,7 @@ On the topic of scheduling in \ucos specifically, not much research seems to hav
 \textcite{dodiu2010} adapt \ucosii scheduling to be interrupt-priority-aware, in the sense that tasks are given interrupt masks which are switched out on context switch. This way, high-priority tasks are not interrupted by an interrupt associated with a lower-priority task.
 
 When it comes to scheduling more generally, there is a breadth of research to explore.
+Historically important papers in the field include Liu and Layland's seminal 1973 paper\cite{Liu1973}, which describes the Earliest Deadline First algorithm, and \textcite{Lehoczky1989}, which analyzes the Rate Monotonic scheduling algorithm.
 
 \textcite{salmani2005modified} describe the Modified Maximum Urgency First scheduling algorithm, which improves upon the Earliest Deadline First algorithm used in this thesis by improving transient overload handling. A version of this algorithm adapted for distributed real-time systems is discussed in \textcite{chen2006flexible}, and extensions to the algorithm are explored in \textcite{behera2012enhanced}.
 
@@ -156,6 +159,9 @@ One issue when using Rate Monotonic-based scheduling is its low upper bound on p
 
 \subsection{Earliest Deadline First}
 The \emph{Earliest Deadline First} algorithm is an elegant solution to the problem of scheduling $n$ independent tasks on a uniprocessor system, with dynamic arrivals and preemption. The algorithm simply picks the task with the earliest absolute deadline among all ready tasks, and executes it. When a new task arrives with an earlier deadline, the running task is preempted in favor of the new task.
+
+\subsubsection{Guarantees}
+There are multiple ways of giving guarantees based on an EDF schedule, depending on the characteristics of the task sets, such as periodicity, synchronicity of arrival times and synchronicity of relative deadline and period. The guarantee criterion implemented in this work is based on the processor demand criterion as outlined in \textcite{Baruah1990}.
 
 \subsubsection{Precedence constraints}
 Using a transformation on the task set, EDF can be extended to handle dependent tasks\cite{Chetto1990}. The idea is as follows. Say we have a task set, with two tasks: \task{1} and \task{2}, where \task{2} is dependent on \task{1}. To honor this precedence constraint, we can modify the arrival time of \task{2}, so that it cannot start before \task{1} has finished. Note that, if there is a valid schedule for the task set which satisfies the precedence constraint, the following conditions are met:
@@ -379,8 +385,6 @@ As it stands, the implementation uses a fixed-size heap, and can therefore only 
 %
 
 \chapter{Experiments}
-First, some baseline results. For these results,
-
 \section{Task switch time}
 The time taken to switch between tasks is evaluated, for both round-robin task switching and normal inter-priority task switching.
 
@@ -404,6 +408,31 @@ As the number of priorities increases, the size of the priority bitmap increases
     \caption{Box plots of task switch time as the number of priorities increases. Since task switches were measured over a fixed period of time, the number of samples for each box plot varies, from a minimum of 167,087 to a maximum of 343,821.}
     \label{fig:prioboxplot}
 \end{figure}
+
+\section{Task set response time and schedulability}
+\subsection{Determining worst-case execution times}
+As discussed in the scheduling chapter, when using guarantee-based scheduling, an accurate worst-case execution time estimation for tasks is paramount to ensure that the provided guarantees actually have meaning. The same is true when evaluating scheduling performance. However, worst-case execution time estimation is a difficult task for even simple code, and in these experiments, I would like to greatly vary task sets, requiring me to perform worst-case execution time analysis for many task sets. Therefore, I have chosen to simulate actual tasks by executing instructions which do not perform any useful work, but have very predictable timing characteristics. These instructions do not access memory, therefore circumventing the various forms of cache-based variability.
+
+\begin{lstlisting}
+wait_for_cycles:
+    subs r0, r0, #1
+    bne wait_for_cycles
+    bx lr
+\end{lstlisting}
+
+
+\begin{enumerate}
+    \item The \lstinline{wait_for_cycles} subroutine waits for approximately $2r_0$ cycles.
+    \item Non-shift data processing instructions not targeting the program counter, such as this \lstinline{subs} instruction, take a single cycle\cite[p. 16-7]{arm:arm1176}.
+    \item Branch instructions such as \lstinline{bne} have complex timing characteristics, due to the fact that the ARM1176JZF-S processor includes both a static and a dynamic branch predictor, as well as a return prediction stack. Let us assume a scenario where we want to wait for a fairly large number of cycles (thousands or millions).
+
+    The first time this branch executes and when it is not in the 128-entry dynamic branch predictor cache, it will take 4 cycles, as it will be correctly predicted to be taken by the static branch predictor, which predicts that backward branches are always taken\cite[p. 5-5]{arm:arm1176}.
+
+    After this, it will be set to be weakly taken in the dynamic branch predictor. This correct prediction allows the branch to take at most a single cycle, but likely zero as it can be folded out if the following instructions are in the instruction prefetch buffer\cite{arm:arm1176}.
+\end{enumerate}
+
+One issue with using cycles to wait for a given period of time is the variability of the Pi's clock speed. The Pi will, however, only throttle the clock speed in two cases; when an undervoltage is detected (i.e. the power supply cannot supply 5 volts at the requested amperage, so the voltage drops) or when the core temperature gets above ~80 degrees. The first case could occur if my power supply was crappy, but measuring the voltage during system operation revealed the voltage being good enough, and the second case does not really occur on first-generation Pis (later generations have higher clock speeds and are multi-core chips, and therefore have a larger thermal output and are at higher risk of overheating).
+
 
 \chapter{Discussion}
 
