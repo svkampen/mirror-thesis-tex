@@ -46,7 +46,7 @@
 \maketitle
 
 \begin{abstract}
-    In this thesis, the performance and utility of Earliest Deadline First scheduling in combination with the Total Bandwidth Server is evaluated  in the \ucosiii real-time operating system on a first-generation Raspberry Pi, and contrasted with \ucosiii's default, priority-based scheduler.
+    In this thesis, the performance and utility of Earliest Deadline First scheduling in combination with the processor demand guarantee criterion is evaluated in the \ucosiii real-time operating system on a first-generation Raspberry Pi, and contrasted with \ucosiii's default, priority-based scheduler.
 \end{abstract}
 
 
@@ -291,7 +291,7 @@ Of particular interest to the scheduler are the timer and the interrupt handling
 \subsection{Timers}
 In real-time systems, there obviously needs to be a correspondence between the time as measured in the system and external time. This is where hardware timers come in. The Raspberry Pi provides both running counter functionality (which allows the system to have a clock -- though it is not a real-time clock, which would keep an accurate date and time of day across reboots) and timer functionality (so the system is interrupted after a given time is elapsed).
 
-As described in the BCM2835 peripheral data sheet, the Raspberry Pi contains two timers; a timer for the ARM processor itself and a system timer. Although \textcite{sfd:realpi} opts to use the ARM timer, the peripheral data sheet tells us\cite[p. 196]{bcm:2835peripherals} that the timer frequency is dependent on the system clock frequency, which may vary as the system goes into low-power mode. Therefore, to get an accurate clock, the system timer is used.
+As described in the BCM2835 peripheral data sheet, the Raspberry Pi contains two timers; a timer for the ARM processor itself and a system timer. Although \textcite{sfd:realpi} opts to use the ARM timer, the peripheral data sheet suggests using the system timer when accurate timing is required.\cite[p. 196]{bcm:2835peripherals}.
 
 The system timer has microsecond resolution\footnote{Although the ARM timer has a higher frequency, it is not useful to us as the time taken to switch between tasks is already in the microsecond range.}, and consists of a 64-bit running counter and four 32-bit timer channels. These timer channels have a corresponding match register, which contains a 32-bit value that is compared with the running counter, triggering an interrupt when the lowest 32 bits of the running counter match the register value.
 
@@ -330,7 +330,7 @@ As mentioned, the interrupts are handled either by the `fast interrupt' handler 
 \subsection{Serial I/O} \label{sec:miniuart}
 Implementing input/output capabilities is not strictly required to get \ucosiii running on the Raspberry Pi. An operating system is of little use without any I/O capabilities, however, and being able to output debugging information is also of great use in porting.
 
-The type of I/O that the port has support for is very common in embedded devices, and was used throughout much of the twentieth century for communication between computers and associated terminals: serial communication using a UART. The peripheral data sheet tells us that the Raspberry Pi contains two UARTs, a primary ARM PL011 UART and a secondary so-called `mini UART'. For reasons similar to the reasons we use the system timer, this port uses the primary UART: the baud rate of the secondary UART is linked to the VPU core frequency, which is variable by default, making the secondary UART `of limited use in the default state' \cite{rpi:uart}, and it has a number of other deficiencies described in \cite{bcm:2835peripherals}.
+The type of I/O that the port has support for is very common in embedded devices, and was used throughout much of the twentieth century for communication between computers and associated terminals: serial communication using a UART. The peripheral data sheet tells us that the Raspberry Pi contains two UARTs, a primary ARM PL011 UART and a secondary so-called `mini UART'. Due to limitations such as the shallow FIFOs, this port uses the primary UART.
 
 On the hardware side, the UART uses GPIO pins 8 and 10\footnote{Pin 14 and 15, respectively, in the Broadcom peripheral datasheet.} for transmit and receive, respectively. Additionally, one of the Pi's ground pins needs to be used to ensure the communicating devices have a common ground.
 
@@ -346,7 +346,7 @@ On the hardware side, the UART uses GPIO pins 8 and 10\footnote{Pin 14 and 15, r
 %
 
 \chapter{Implementing a new scheduler}
-The scheduling algorithm implemented for this thesis is the \emph{Earliest Deadline First} algorithm, along with a \emph{Total Bandwidth Server} for non-real-time aperiodic jobs.
+The scheduling algorithm implemented for this thesis is the \emph{Earliest Deadline First} algorithm, with the processor demand criterion guarantee algorithm.
 
 \section{Determining EDF parameters for system tasks}
 In the process of rewriting \ucosiii to make use of the EDF scheduler, the problem of determining EDF parameters for some key system tasks surfaced.
@@ -421,7 +421,7 @@ wait_for_cycles:
 
 
 \begin{enumerate}
-    \item The \code{wait_for_cycles} subroutine waits for $2r_0 + 10/13$ cycles (13 in case of a branch target address cache miss, 10 otherwise).
+    \item The \code{wait_for_cycles} subroutine waits for $2r_0 + 10/13 + 0/1$ cycles (13 in case of a branch target address cache miss, 10 otherwise).
     \item Data processing instructions not targeting the program counter and without included shifts, such as this \code{subs} instruction, take a single cycle\cite[p. 16-7]{arm:arm1176}.
     \item Branch instructions such as \code{bne} have complex timing characteristics, since the ARM1176JZF-S processor includes both a static and a dynamic branch predictor, as well as a return prediction stack\cite[p. 16-2]{arm:arm1176}. Let us assume a scenario where we want to wait for a number of cycles that is greater than one.
 
@@ -430,10 +430,10 @@ wait_for_cycles:
     After this, it will be set to be weakly taken in the dynamic branch predictor. This correct prediction allows the branch to take a single cycle\footnote{If folded out, the branch could take zero cycles. Since branch folding is hard to predict, however, my startup code disables branch folding.}\cite{arm:arm1176}.
 
     After the last iteration, the branch will be mispredicted, and as the subtraction instruction directly precedes the branch instruction, this incurs a cost of 6 cycles.
-    \item The return instruction is correctly predicted by the return stack, and therefore takes 4 cycles.
+    \item The return instruction takes 4 or 5 cycles depending on whether the code is interrupted - if it is, the return stack will most likely be empty and therefore cause an extra cycle.
 \end{enumerate}
 
-One issue with using cycles to wait for a given period of time is the variability of the Pi's clock speed. The Pi will, however, only throttle the clock speed in two cases; when an undervoltage is detected (i.e. the power supply cannot supply 5 volts at the requested amperage, so the voltage drops) or when the core temperature gets above ~80 degrees. Measuring the GPIO voltage during system stress reveals that my power supply can consistently supply five volts. The second case does not occur on first-generation Pis due to its low-power processor (later generations have higher clock speeds and are multi-core chips, and therefore have a larger thermal output and are at higher risk of overheating). Therefore, we can rely on the system clock staying constant.
+One issue with using cycles to wait for a given period of time is the variability of the Pi's clock speed. The Pi will, however, only throttle the clock speed in two cases; when an undervoltage is detected (this occurs when the power supply cannot supply 5 volts at the requested amperage, so the voltage drops) or when the core temperature gets above 80 degrees\cite{rpi:gpuclockpower}. Measuring the GPIO voltage during system stress reveals that my power supply can consistently supply five volts. The second case does not occur on first-generation Pis due to its low-power processor (later generations have higher clock speeds and are multi-core chips, and therefore have a larger thermal output and are at higher risk of overheating). Therefore, we can rely on the system clock staying constant.
 
 
 \chapter{Discussion and conclusion}
