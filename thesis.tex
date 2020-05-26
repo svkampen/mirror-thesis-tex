@@ -22,7 +22,7 @@
 
 \lstset{language=[ARM]Assembler,numbers=left,basicstyle=\small\ttfamily}
 
-\newcommand{\code}[1]{\lstinline{#1}}
+\newcommand{\code}[1]{\lstinline[breaklines=true]{#1}}
 \newcommand{\ucosiii}{\textmu C/OS-III\xspace}
 \newcommand{\ucosii}{\textmu C/OS-II\xspace}
 \newcommand{\ucpu}{\textmu C/CPU\xspace}
@@ -34,8 +34,6 @@
 \makeatletter
 \define@key{Gin}{resolution}{\pdfimageresolution=#1\relax}
 \makeatother
-
-\tolerance=2000
 
 \title{Predictable, guarantee-based\\ scheduling in the \ucosiii\\ real-time operating system}
 \author{Sam van Kampen}
@@ -389,29 +387,30 @@ As it stands, the implementation uses a fixed-size heap, and can therefore only 
 The time taken to switch between tasks is evaluated, for both round-robin task switching and normal inter-priority task switching.
 
 \subsection{\ucosiii scheduler: round-robin task switch time}
-A histogram of task switch time for round-robin task switching can be seen in figure~\ref{fig:rrhist}. A clear primary peak is visible around 8µs. However, larger task switch times do occur. One explanation for them lies in the tick interrupt, which has been set to occur once every 10,000 microseconds (100Hz). This interrupt suspends the task for a small amount of time, thus resulting in a larger task switch time. Another phenomenon, whose cause is not entirely clear, has something to do with the number of round-robin tasks:  One cause of the outliers is the tick interrupt occurring every 100 Hz. Another has to do with the number of round-robin tasks: every $n$ task switches after some number of ticks, an outlier is produced.
+The round-robin task switch time under the default \ucosiii scheduler was evaluated (code in: \code{apps/rrmeasure/app.c}). The tick rate was set to 100Hz. The task switch time was sampled 1,024,000 times, and a histogram of the task switch time can be seen in figure~\ref{fig:rrhist}. 
+
+A clear primary peak is visible around 8µs. However, larger task switch times do occur. One explanation for them lies in the tick interrupt, which suspends the task for some time, thus resulting in a larger task switch time. Another phenomenon, whose cause is not entirely clear, has something to do with the number of round-robin tasks:  One cause of the outliers is the tick interrupt occurring every 100 Hz. Another has to do with the number of round-robin tasks: every $n$ task switches after some number of ticks, an outlier is produced.
 
 \begin{figure}[htpb]
     \centering
     \includegraphics[width=0.8\textwidth]{task_switch_time.eps}
-    \caption{A histogram of task switch time between round-robin tasks (mean 7.8µs; std. dev. 0.86µs). Total samples:  }
+    \caption{A histogram of task switch time between round-robin tasks (mean 8.17µs; std. dev. 0.90µs). Total samples: 1,024,000.}
     \label{fig:rrhist}
 \end{figure}
 
 \subsection{\ucosiii scheduler: task switch time as the number of priorities increases}
-
 As the number of priorities increases, the size of the priority bitmap increases linearly. Since we search the priority bitmap each time we perform a task switch, we would expect task switch time to increase linearly as well. In figure~\ref{fig:prioboxplot}, a set of box plots of task switch time is shown, for a varying number of priorities. For each number of priorities, 32 tasks were spaced evenly in the priority space, and the time to switch between them was measured for each task switch for a duration of five seconds. As expected, the mean task switch time increases linearly (visible as a curved line in this log-log plot due to the non-zero y-intercept). Additionally, the variance increases greatly as the number of priorities increases.
 
 \begin{figure}[htpb]
     \centering
     \includegraphics[width=0.8\textwidth]{boxplot.eps}
-    \caption{Box plots of task switch time as the number of priorities increases. Since task switches were measured over a fixed period of time, the number of samples for each box plot varies, from a minimum of 167,087 to a maximum of 343,821.}
+    \caption{Box plots of task switch time as the number of priorities increases. As task switches were measured over a fixed period of time, the number of samples for each box plot varies, from a minimum of 547,535 to a maximum of 938,926.}
     \label{fig:prioboxplot}
 \end{figure}
 
 \section{Task set response time and schedulability}
 \subsection{Determining worst-case execution times}
-As discussed in the scheduling chapter, when using guarantee-based scheduling, an accurate worst-case execution time estimation for tasks is paramount to ensure that the provided guarantees actually have meaning. The same is true when evaluating scheduling performance. However, worst-case execution time estimation is a difficult task for even simple code, and in these experiments, I would like to greatly vary task sets, requiring me to perform worst-case execution time analysis for many task sets. Therefore, I have chosen to simulate actual tasks by executing instructions which do not perform any useful work, but have very predictable timing characteristics. These instructions do not access memory, therefore circumventing the various forms of cache-based variability.
+As discussed in the scheduling chapter, when using guarantee-based scheduling, an accurate worst-case execution time estimation for tasks is paramount to ensure that the provided guarantees actually have meaning. The same is true when evaluating scheduling performance. However, worst-case execution time estimation is a difficult task for even simple code, and in these experiments, I would like to greatly vary task sets, requiring me to perform worst-case execution time analysis for many task sets. Therefore, I have chosen to simulate actual tasks by executing instructions which do not perform any useful work, but have very predictable timing characteristics. These timing characteristics can be found in chapter 16 of the ARM Technical Reference Manual for the Pi's ARM1176JZF-S processor\cite{arm:arm1176}.
 
 \begin{lstlisting}
 wait_for_cycles:
@@ -422,27 +421,29 @@ wait_for_cycles:
 
 
 \begin{enumerate}
-    \item The \lstinline{wait_for_cycles} subroutine waits for approximately $2r_0$ cycles.
-    \item Non-shift data processing instructions not targeting the program counter, such as this \lstinline{subs} instruction, take a single cycle\cite[p. 16-7]{arm:arm1176}.
-    \item Branch instructions such as \lstinline{bne} have complex timing characteristics, due to the fact that the ARM1176JZF-S processor includes both a static and a dynamic branch predictor, as well as a return prediction stack. Let us assume a scenario where we want to wait for a fairly large number of cycles (thousands or millions).
+    \item The \code{wait_for_cycles} subroutine waits for $2r_0 + 10/13$ cycles (13 in case of a branch target address cache miss, 10 otherwise).
+    \item Data processing instructions not targeting the program counter and without included shifts, such as this \code{subs} instruction, take a single cycle\cite[p. 16-7]{arm:arm1176}.
+    \item Branch instructions such as \code{bne} have complex timing characteristics, since the ARM1176JZF-S processor includes both a static and a dynamic branch predictor, as well as a return prediction stack\cite[p. 16-2]{arm:arm1176}. Let us assume a scenario where we want to wait for a number of cycles that is greater than one.
 
     The first time this branch executes and when it is not in the 128-entry dynamic branch predictor cache, it will take 4 cycles, as it will be correctly predicted to be taken by the static branch predictor, which predicts that backward branches are always taken\cite[p. 5-5]{arm:arm1176}.
 
-    After this, it will be set to be weakly taken in the dynamic branch predictor. This correct prediction allows the branch to take at most a single cycle, but likely zero as it can be folded out if the following instructions are in the instruction prefetch buffer\cite{arm:arm1176}.
+    After this, it will be set to be weakly taken in the dynamic branch predictor. This correct prediction allows the branch to take a single cycle\footnote{If folded out, the branch could take zero cycles. Since branch folding is hard to predict, however, my startup code disables branch folding.}\cite{arm:arm1176}.
+
+    After the last iteration, the branch will be mispredicted, and as the subtraction instruction directly precedes the branch instruction, this incurs a cost of 6 cycles.
+    \item The return instruction is correctly predicted by the return stack, and therefore takes 4 cycles.
 \end{enumerate}
 
-One issue with using cycles to wait for a given period of time is the variability of the Pi's clock speed. The Pi will, however, only throttle the clock speed in two cases; when an undervoltage is detected (i.e. the power supply cannot supply 5 volts at the requested amperage, so the voltage drops) or when the core temperature gets above ~80 degrees. The first case could occur if my power supply was crappy, but measuring the voltage during system operation revealed the voltage being good enough, and the second case does not really occur on first-generation Pis (later generations have higher clock speeds and are multi-core chips, and therefore have a larger thermal output and are at higher risk of overheating).
+One issue with using cycles to wait for a given period of time is the variability of the Pi's clock speed. The Pi will, however, only throttle the clock speed in two cases; when an undervoltage is detected (i.e. the power supply cannot supply 5 volts at the requested amperage, so the voltage drops) or when the core temperature gets above ~80 degrees. Measuring the GPIO voltage during system stress reveals that my power supply can consistently supply five volts. The second case does not occur on first-generation Pis due to its low-power processor (later generations have higher clock speeds and are multi-core chips, and therefore have a larger thermal output and are at higher risk of overheating). Therefore, we can rely on the system clock staying constant.
 
 
-\chapter{Discussion}
-
-\chapter{Conclusions}
-
-As discussed in the introduction, guaranteeing
+\chapter{Discussion and conclusion}
+As discussed in the introduction, guaranteeing 
 
 \section{Further Research}
 
 
-\printbibliography
-
+{
+    \hfuzz=8pt
+    \printbibliography
+}
 \end{document}
