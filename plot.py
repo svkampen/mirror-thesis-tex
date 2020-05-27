@@ -1,11 +1,14 @@
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
+import numpy as np
 
 def timelineplot(fname, stop_time, tasks, tick_delta):
-    fig, axes = plt.subplots(len(tasks), sharex='col')
+    fig, axeses = plt.subplots(len(tasks), sharex='col')
+    if not isinstance(axeses, np.ndarray):
+        axeses = [axeses]
     fig.set_size_inches(10,len(tasks))
-    for task, axes in zip(tasks, axes):
+    for task, axes in zip(tasks, axeses):
         rects = []
         axes.tick_params(axis='y', left=False, labelleft=False)
         axes.set_xticks(range(0, stop_time, 1))
@@ -54,3 +57,6 @@ timelineplot("optimaldeadline.eps",
         22, [task(r"\tau_1", ((0,1), (5,6), (8,9), (11,12), (12,13), (15,16), (18,19)), 3),
              task(r"\tau_2", ((1,3), (6,8), (9,11), (13,15), (16,18)), 4),
              job(r"j_k", ((3,5),), 2, 5)], 2)
+
+timelineplot("taskcharacteristics.svg",
+        22, [job(r"\tau_1", ((6, 16),), 2, 20)], 2)

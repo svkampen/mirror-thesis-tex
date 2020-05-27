@@ -66,10 +66,7 @@ Due to the focus of real-time systems on executing actions within a given time f
 To implement a real-time computing system, the entire system can be written from the ground up, without using any existing code. This can often be costly in terms of time, however. In order to facilitate quick development of real-time systems, `general-purpose' real-time operating systems have been developed, which contain facilities like task management, mutual exclusion primitives, et cetera.
 
 \subsubsection{\ucos} \label{sec:ucos}
-The real-time operating system that is used in this thesis is called \textit{\ucosiii}. The original version of \ucos was written in 1991, and subsequent versions have been used in a wide variety of applications, among them NASA's Curiosity Rover\footnote{https://www.micrium.com/about/customer-stories/curiosity/}. It is especially suited to this thesis because of the breadth of its documentation: firstly, an extensive manual \cite{micrium:ucosmanual} is supplied with the source code, and secondly, the source code itself is heavily commented and written with readability in mind.
-
-\subsubsection{Raspberry Pi}
-The hardware used to run \ucosiii and evaluate the scheduling strategy detailed in this thesis is a first-generation Raspberry Pi. More about the hardware can be found in chapter~\ref{chp:hardware}.
+The real-time operating system that is used in this thesis is called \textit{\ucosiii}. The original version of \ucos was written in 1991 by Jean J. Labrosse, due to dissatisfaction with commercial kernel offerings at the time. As the decade came to a close, Labrosse decided to work on the operating system full-time, founding Micrium, Inc., which currently develops and sells the kernel commercially, with source available at no cost for research purposes. Versions of \ucos have been used in a wide variety of applications, among them NASA's Curiosity Rover\footnote{https://www.micrium.com/about/customer-stories/curiosity/}. It is especially suited to this thesis because of the breadth of its documentation: firstly, an extensive manual \cite{micrium:ucosmanual} is supplied with the source code, and secondly, the source code itself is heavily commented and written with readability in mind.
 
 \subsubsection{Research question}
 As described above, predictability is a vital part of real-time systems. Naturally, in systems that consist of multiple tasks, an important factor in guaranteeing task execution within given deadlines is the \textit{task scheduler}. As noted in \textcite{buttazzo2011hard}, however, many real-time kernels lack functionality that guarantees task execution. In many cases, a general priority-based scheduler is implemented, with possible round-robin scheduling functionality. Therefore, in this thesis, I will explore the benefits of guarantee-based scheduling algorithms through both literature analysis and through the implementation of a guarantee-based scheduling algorithm in a real-time operating system (\ucosiii), and by evaluating it on real hardware (a first-generation Raspberry Pi). The research question I am aiming to answer is:
@@ -144,6 +141,15 @@ Scheduling algorithms usually make decisions on which task to schedule based on 
     \1 A task's \textbf{finishing time} ($f_i$) is the time at which a task finishes execution;
     \1 A task's \textbf{lateness} ($L_i$) is the difference between the task's absolute deadline and its finishing time.
 \end{outline}
+
+An illustration of these characteristics can be seen in figure~\ref{fig:taskcharacteristics}.
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=\textwidth]{taskcharacteristics.eps}
+    \caption{An overview of common real-time task characteristics.}
+    \label{fig:taskcharacteristics}
+\end{figure}
 
 \section{Static scheduling algorithms}
 As mentioned in the list of scheduling algorithm characteristics, \emph{static scheduling algorithms} do not take varying system behavior into account, and make use of characteristics that are known at system start. 
@@ -387,7 +393,7 @@ As it stands, the implementation uses a fixed-size heap, and can therefore only 
 The time taken to switch between tasks is evaluated, for both round-robin task switching and normal inter-priority task switching.
 
 \subsection{\ucosiii scheduler: round-robin task switch time}
-The round-robin task switch time under the default \ucosiii scheduler was evaluated (code in: \code{apps/rrmeasure/app.c}). The tick rate was set to 100Hz. The task switch time was sampled 1,024,000 times, and a histogram of the task switch time can be seen in figure~\ref{fig:rrhist}. 
+The round-robin task switch time under the default \ucosiii scheduler was evaluated (code in: \code{apps/rrmeasure/app.c}). The tick rate was set to 100Hz. The task switch time was sampled 1,024,000 times, and a histogram of the task switch time can be seen in figure~\ref{fig:rrhist}. The measured time is the time to yield a given task and switch in another (i.e. is measured from just before a yield call until control is given to the next task).
 
 A clear primary peak is visible around 8µs. However, larger task switch times do occur. One explanation for them lies in the tick interrupt, which suspends the task for some time, thus resulting in a larger task switch time. Another phenomenon, whose cause is not entirely clear, has something to do with the number of round-robin tasks:  One cause of the outliers is the tick interrupt occurring every 100 Hz. Another has to do with the number of round-robin tasks: every $n$ task switches after some number of ticks, an outlier is produced.
 
@@ -421,7 +427,7 @@ wait_for_cycles:
 
 
 \begin{enumerate}
-    \item The \code{wait_for_cycles} subroutine waits for $2r_0 + 10/13 + 0/1$ cycles (13 in case of a branch target address cache miss, 10 otherwise).
+    \item The \code{wait_for_cycles} subroutine waits for $2r_0 ~10-14$ cycles. A description of the cycle count of the used instructions is as follows;
     \item Data processing instructions not targeting the program counter and without included shifts, such as this \code{subs} instruction, take a single cycle\cite[p. 16-7]{arm:arm1176}.
     \item Branch instructions such as \code{bne} have complex timing characteristics, since the ARM1176JZF-S processor includes both a static and a dynamic branch predictor, as well as a return prediction stack\cite[p. 16-2]{arm:arm1176}. Let us assume a scenario where we want to wait for a number of cycles that is greater than one.
 
@@ -433,11 +439,12 @@ wait_for_cycles:
     \item The return instruction takes 4 or 5 cycles depending on whether the code is interrupted - if it is, the return stack will most likely be empty and therefore cause an extra cycle.
 \end{enumerate}
 
+The cycle count for the given instructions could vary based on presence in the instruction cache or other architectural buffers (such as the instruction prefetch buffer). Most important, however, is the timing of the instructions in the inner loop, as they account for the bulk of the cycles used. Experimentally, the 2-cycle inner loop behavior is verified in \code{apps/waittest/app.c}.
+
 One issue with using cycles to wait for a given period of time is the variability of the Pi's clock speed. The Pi will, however, only throttle the clock speed in two cases; when an undervoltage is detected (this occurs when the power supply cannot supply 5 volts at the requested amperage, so the voltage drops) or when the core temperature gets above 80 degrees\cite{rpi:gpuclockpower}. Measuring the GPIO voltage during system stress reveals that my power supply can consistently supply five volts. The second case does not occur on first-generation Pis due to its low-power processor (later generations have higher clock speeds and are multi-core chips, and therefore have a larger thermal output and are at higher risk of overheating). Therefore, we can rely on the system clock staying constant.
 
-
 \chapter{Discussion and conclusion}
-As discussed in the introduction, guaranteeing 
+As discussed in the introduction, using guarantee-based scheduling is yet another tool in the toolbox of achieving predictable and safe real-time computing. I hope this thesis gives a good overview of the required information needed to use guarantee-based scheduling, and shows where guarantee-based scheduling is strong.
 
 \section{Further Research}
 
