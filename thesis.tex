@@ -133,6 +133,14 @@ The following scheduling algorithm classes are adapted from \textcite{buttazzo20
 \section{Task characteristics in real-time systems}
 Scheduling algorithms usually make decisions on which task to schedule based on characteristics of the tasks in the given task set, perhaps augmented with characteristics of the system they are running on. A few task characteristics that are common on real-time systems, and used in the scheduling algorithms below, are detailed below.
 
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=\textwidth]{taskcharacteristics.eps}
+    \caption{An overview of common real-time task characteristics.}
+    \label{fig:taskcharacteristics}
+\end{figure}
+
+
 \begin{outline}
     \1 A task's \textbf{arrival time} ($a_i$) (also called \textbf{release time} $r_i$) is the time at which a task becomes ready for execution;
     \1 A task's \textbf{computation time} ($C_i$) is the time necessary for the processor to execute the task, without interruption;
@@ -143,13 +151,6 @@ Scheduling algorithms usually make decisions on which task to schedule based on 
 \end{outline}
 
 An illustration of these characteristics can be seen in figure~\ref{fig:taskcharacteristics}.
-
-\begin{figure}[htpb]
-    \centering
-    \includegraphics[width=\textwidth]{taskcharacteristics.eps}
-    \caption{An overview of common real-time task characteristics.}
-    \label{fig:taskcharacteristics}
-\end{figure}
 
 \section{Static scheduling algorithms}
 As mentioned in the list of scheduling algorithm characteristics, \emph{static scheduling algorithms} do not take varying system behavior into account, and make use of characteristics that are known at system start. 
