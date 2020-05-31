@@ -1,6 +1,12 @@
 from matplotlib import pyplot as plt
 import numpy as np
 
+from matplotlib import rcParams
+rcParams.update({'figure.autolayout': True})
+
+fig = plt.gcf()
+fig.set_size_inches(6,3.5)
+
 plt.xlabel("$T_2$ / $T_1$")
 plt.ylabel(r"$U_{ub}$")
 plt.ylim(0.5, 1)
@@ -12,6 +18,7 @@ def U(F, k):
 k = np.linspace(1, 10, 1000)
 F = np.floor(k)
 Us = U(F, k)
+
 
 plt.plot(k, Us)
 plt.savefig("ub_rm_2tasks.eps")

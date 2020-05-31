@@ -131,7 +131,7 @@ The following scheduling algorithm classes are adapted from \textcite{buttazzo20
 \end{outline}
 
 \section{Task characteristics in real-time systems}
-Scheduling algorithms usually make decisions on which task to schedule based on characteristics of the tasks in the given task set, perhaps augmented with characteristics of the system they are running on. A few task characteristics that are common on real-time systems, and used in the scheduling algorithms below, are detailed below.
+Scheduling algorithms usually make decisions on which task to schedule based on characteristics of the tasks in the given task set, perhaps augmented with characteristics of the system they are running on. A few task characteristics that are common on real-time systems, and used in the scheduling algorithms below, are detailed below. An illustration of these characteristics can be seen in figure~\ref{fig:taskcharacteristics}.
 
 \begin{figure}[htpb]
     \centering
@@ -139,7 +139,6 @@ Scheduling algorithms usually make decisions on which task to schedule based on 
     \caption{An overview of common real-time task characteristics.}
     \label{fig:taskcharacteristics}
 \end{figure}
-
 
 \begin{outline}
     \1 A task's \textbf{arrival time} ($a_i$) (also called \textbf{release time} $r_i$) is the time at which a task becomes ready for execution;
@@ -150,13 +149,15 @@ Scheduling algorithms usually make decisions on which task to schedule based on 
     \1 A task's \textbf{lateness} ($L_i$) is the difference between the task's absolute deadline and its finishing time.
 \end{outline}
 
-An illustration of these characteristics can be seen in figure~\ref{fig:taskcharacteristics}.
+\noindent This thesis focuses on periodic task sets, where each task consists of an infinite number of task instances which are run periodically. The period for a given periodic task is denoted $T_i$. The task characteristics above can vary per instance; all instances will have the same relative deadline, but the absolute deadline obviously varies. To refer to a characteristic for a specific instance, the notation $d_{i,k}$ is commonly used, where we refer to the absolute deadline of the $k$th instance of task $\tau_i$.
+
+Commonly, a periodic task's relative deadline is equal to its period. In the following figures in this thesis, since arrival times and deadlines coincide, they are shown simply as vertical lines, instead of as arrows.
 
 \section{Static scheduling algorithms}
 As mentioned in the list of scheduling algorithm characteristics, \emph{static scheduling algorithms} do not take varying system behavior into account, and make use of characteristics that are known at system start.
 
 \subsection{Rate Monotonic}
-\emph{Rate Monotonic} is a scheduling algorithm for periodic task sets which assigns priorities based on the frequency of the task. Id est, if the task needs to run more often, it gets a higher priority. Rate Monotonic is a fixed-priority assignment, so task priorities do not change over time. \textcite{Liu1973} proved the optimality of Rate Monotonic among fixed-priority assignments.
+The \emph{Rate Monotonic} algorithm is a scheduling algorithm for periodic task sets which assigns priorities based on the frequency of the task, where, if the task needs to run more often, it gets a higher priority. Rate Monotonic is a fixed-priority assignment, so task priorities do not change over time. \textcite{Liu1973} proved the optimality of Rate Monotonic among fixed-priority assignments.
 
 An example task set as scheduled by Rate Monotonic can be seen in figure~\ref{fig:rmexample}. As $\tau_1$ has a smaller period, it has higher priority than $\tau_2$.
 
