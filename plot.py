@@ -43,20 +43,36 @@ def job(name, times, activation, deadline):
 def task(name, times, activation_delta):
     return {'name': name, 'times': times, 'activation_start': 0, 'activation_delta': activation_delta, 'type': 'periodic'}
 
-timelineplot("worstcasedeadline.eps",
-        22, [task(r"\tau_1", ((12, 13), (11, 12), (8,9), (5,6), (1,2), (16,17), (19,20)), 3),
-             task(r"\tau_2", ((9, 11), (6, 8), (2,4), (14,16), (17,19)), 4),
-             job(r"j_k", [(4,5), (13,14)], 2, 14)], 2)
+#timelineplot("worstcasedeadline.eps",
+#        22, [task(r"\tau_1", ((12, 13), (11, 12), (8,9), (5,6), (1,2), (16,17), (19,20)), 3),
+#             task(r"\tau_2", ((9, 11), (6, 8), (2,4), (14,16), (17,19)), 4),
+#             job(r"j_k", [(4,5), (13,14)], 2, 14)], 2)
 
-timelineplot("edfdeadline.eps",
-        22, [task(r"\tau_1", ((0,1), (3,4), (6,7), (10, 11), (12, 13), (15,16), (18,19)), 3),
-             task(r"\tau_2", ((1,3), (4,6), (8,10), (13,15), (16,18)), 4),
-             job(r"j_k", ((7,8), (11,12)), 2, 14)], 2)
+#timelineplot("edfdeadline.eps",
+#        22, [task(r"\tau_1", ((0,1), (3,4), (6,7), (10, 11), (12, 13), (15,16), (18,19)), 3),
+#             task(r"\tau_2", ((1,3), (4,6), (8,10), (13,15), (16,18)), 4),
+#             job(r"j_k", ((7,8), (11,12)), 2, 14)], 2)
 
-timelineplot("optimaldeadline.eps",
-        22, [task(r"\tau_1", ((0,1), (5,6), (8,9), (11,12), (12,13), (15,16), (18,19)), 3),
-             task(r"\tau_2", ((1,3), (6,8), (9,11), (13,15), (16,18)), 4),
-             job(r"j_k", ((3,5),), 2, 5)], 2)
+#timelineplot("optimaldeadline.eps",
+#        22, [task(r"\tau_1", ((0,1), (5,6), (8,9), (11,12), (12,13), (15,16), (18,19)), 3),
+#             task(r"\tau_2", ((1,3), (6,8), (9,11), (13,15), (16,18)), 4),
+#             job(r"j_k", ((3,5),), 2, 5)], 2)
 
-timelineplot("taskcharacteristics.svg",
-        22, [job(r"\tau_1", ((6, 16),), 2, 20)], 2)
+#timelineplot("taskcharacteristics.svg",
+#        22, [job(r"\tau_1", ((6, 16),), 2, 20)], 2)
+
+timelineplot("rmexample.eps",
+        36, [task(r"\tau_1", ((0,3), (5,8), (10,13), (15,18), (20,23), (25,28), (30,33)), 5),
+             task(r"\tau_2", ((3, 5), (8,10), (14,15), (18,19), (23,25), (28,30)), 7)], 2)
+
+timelineplot("rmfail.eps",
+        35, [task(r"\tau_1", ((0,2), (5,7), (10,12), (15,17), (20,22), (25,27), (30,32)), 5),
+
+             task(r"\tau_2", ((2,5), (7,10), (12,15), (17,20), (22,25), (27,30), (32,34)), 7)], 2)
+
+timelineplot("edfsucc.eps",
+        35, [task(r"\tau_1", ((0,2), (6,8), (12,14), (15,17), (20,22), (25,27), (32, 34)), 5),
+
+             task(r"\tau_2", ((2,6), (8,12), (14,15), (17,20), (21,25), (28,32)), 7)], 2)
+
+
