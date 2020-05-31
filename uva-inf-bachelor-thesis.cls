@@ -43,7 +43,7 @@
 		\includegraphics[height=0.9cm]{logoUvA_nl}
 	\end{textblock*}
 
-	\begin{textblock*}{10cm}(6cm,12cm)
+	\begin{textblock*}{10.5cm}(6cm,12cm)
 		\noindent
 		\sffamily\huge \@title
 	\end{textblock*}
