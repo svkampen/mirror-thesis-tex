@@ -1,0 +1,16 @@
+\chapter{Related work}
+Running \ucos on the Raspberry Pi has been explored earlier, most notably in a thesis by \textcite{sfd:realpi}, which details the porting of \ucosii to a number of different versions of the Pi. The port in this work differs, both in the operating system version used and the use of the Pi's hardware components, most notably when it comes to the choice of UART and timer.
+
+On the topic of scheduling in \ucos specifically, not a lot of research seems to have been done -- perhaps due to its lack of open-source licensing. Nevertheless, there is some interesting work in this area.
+
+\textcite{tue:hfs} describe a two-level hierarchical scheduling framework, which allows system designers to partition system tasks into subsystems which have their own scheduling budget and strategy. The framework is subsequently implemented and evaluated on hardware running \ucosii.
+
+\textcite{Cho2011} define a scheduling algorithm for \ucosii which mixes its default priority-based scheduler with Earliest Deadline First in a best-effort configuration, and uses deadline misses as a metric to perform dynamic voltage and frequency scaling (DVFS).
+
+\textcite{dodiu2010} adapt \ucosii scheduling to be interrupt-priority-aware, in the sense that tasks are given interrupt masks which are switched out on context switch. This way, high-priority tasks are not interrupted by an interrupt associated with a lower-priority task.
+
+When it comes to scheduling more generally, there is a breadth of research to explore.
+Historically important papers in the field include Liu and Layland's seminal 1973 paper\cite{Liu1973}, which describes and analyzes the Rate Monotonic and Earliest Deadline First algorithms, and \textcite{Lehoczky1989}, which gives an exact characterization and determines the average case behavior of the Rate Monotonic scheduling algorithm. A theoretical comparison between Rate Monotonic and Earliest Deadline First is given in \textcite{Buttazzo2005}.
+
+\textcite{salmani2005modified} describe the Modified Maximum Urgency First scheduling algorithm, which improves upon the Earliest Deadline First algorithm used in this thesis by improving transient overload handling. A version of this algorithm adapted for distributed real-time systems is discussed in \textcite{chen2006flexible}, and extensions to the algorithm are explored in \textcite{behera2012enhanced}.
+

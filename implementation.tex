@@ -1,0 +1,35 @@
+\chapter{Implementing a new scheduler}
+The scheduling algorithm implemented for this thesis is the \emph{Earliest Deadline First} algorithm, with the processor demand criterion guarantee algorithm.
+
+\section{Determining EDF parameters for system tasks}
+In the process of rewriting \ucosiii to make use of the EDF scheduler, the problem of determining EDF parameters for some key system tasks surfaced.
+
+\section{Data structures}
+In \ucosiii, tasks are represented by \code{OS_TCB} objects, which contain information such as the task's stack pointer, entry point, the next and previous task in its ready list, et cetera. The EDF scheduler adds the following attributes to the task objects:
+
+\begin{itemize}
+    \item \code{EDFPeriod} -- The period of the task, in microseconds.
+    \item \code{EDFCurrentActivationTime} -- The activation time of the current instance of the task, in microseconds.
+    \item \code{EDFRelativeDeadline} -- The deadline of the task relative to its activation time, in microseconds.
+    \item \code{EDFWorstCaseExecutionTime} -- The worst-case execution time of the task, in microseconds.
+    \item \code{EDFHeapIndex} -- The EDF heap index associated with the task.
+\end{itemize}
+
+To efficiently determine the task with the earliest deadline, tasks should be stored in a data structure which supports quick access to some `minimal' element. The data structure most obviously suited to this is the min-heap, providing $O(\log n)$ insertion, $O(n)$ arbitrary element deletion, $O(\log n)$ minimal element deletion and $O(1)$ minimal element lookup. Additionally, in exchange for increased memory usage, arbitrary element deletion can be done in $O(\log n)$, by keeping a reverse mapping from element to heap index (\code{EDFHeapIndex}).
+
+The heap is implemented as an implicit data structure, being little more than an array of \code{OS_TCB*} elements with operations defined on it.
+
+\section{The scheduler implementation}
+Luckily for us, the scheduling code in \ucosiii is fairly well abstracted from the rest of the code. There are some places where direct access to priorities or ready lists is used - in some of these cases, code could easily be patched out to make use of equivalent EDF heap functions, in other cases (such as the mutex priority inversion prevention code), the corresponding features were simply disabled. The features provided by mutexes, specifically, are not compatible with the EDF guarantees as they are implemented here, and so are a prime candidate for disabling.
+
+In the end, the only functions which were wholly patched (and can be found in \code{source/sched_edf.c} in the repository associated with this thesis) are \code{OSTaskCreate}, \code{OSSched}, \code{OS_TaskBlock}, \code{OS_TaskRdy} and \code{OSIntExit}.
+
+The \code{OS_TaskBlock} and \code{OS_TaskRdy} functions are functionally the same, removing tasks from or inserting tasks into the EDF heap instead of the ready lists.
+
+\code{OSSched} and \code{OSIntExit} are simplified in computational complexity. As the tasks are kept in an EDF min-heap, the highest priority task can simply be found by peeking at the first element of the heap. This task is subsequently run.
+
+\code{OSTaskCreate} is the function which needed the most work -- its signature has been changed to include EDF-specific parameters, and its innards have been rewired to also make scheduling guarantees. If the guarantee fails, \code{OSTaskCreate} now returns \code{OS_ERR_EDF_GUARANTEE_FAILED} and does not put the task on the heap.
+
+\section{Implementation constraints}
+As it stands, the implementation uses a fixed-size heap, and can therefore only accommodate a fixed number of tasks. Dynamic expansion of the heap could be implemented, but could incur significant, hard-to-predict runtime overhead.
+

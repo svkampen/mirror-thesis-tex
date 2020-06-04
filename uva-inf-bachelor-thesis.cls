@@ -40,7 +40,7 @@
 
 	\begin{textblock*}{10cm}(6cm,3cm)
 		\noindent\large\scshape Bachelor Informatica\\[2ex]
-		\includegraphics[height=0.9cm]{logoUvA_nl}
+        \includegraphics[height=0.9cm]{figures/logoUvA_nl}
 	\end{textblock*}
 
 	\begin{textblock*}{10.5cm}(6cm,12cm)
