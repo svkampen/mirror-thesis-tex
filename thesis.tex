@@ -46,7 +46,7 @@
 \maketitle
 
 \begin{abstract}
-    In this thesis, the performance and utility of Earliest Deadline First scheduling in combination with the processor demand guarantee criterion is evaluated in the \ucosiii real-time operating system on a first-generation Raspberry Pi, and contrasted with \ucosiii's default, priority-based scheduler.
+    In this thesis, the performance and utility of Earliest Deadline First scheduling in combination with the processor demand guarantee criterion is evaluated in the \ucosiii real-time operating system on a first-generation Raspberry Pi, and contrasted with \ucosiii's default, priority-based scheduler, using the Rate Monotonic algorithm. The EDF scheduler was found to perform significantly better at little extra implementation cost, and the processor demand criterion was found to accurately determine schedulability in practice.
 \end{abstract}
 
 
@@ -63,13 +63,13 @@ In our day-to-day computing, we are usually not concerned with predictability wh
 
 Due to the focus of real-time systems on executing actions within a given time frame, these systems are often said to have to be \textit{fast}. This framing is, however, misleading. When we talk about speed, what do we mean? In a real-time scenario, a system is required to provide a guarantee that tasks can be successfully executed within the given time constraints. In order to do this, the system needs to be \textit{fast enough} to react to its environment, but it also needs to have a high degree of predictability. Features of modern computing systems that speed up average response time (and would, therefore, make a real-time system `faster' by some definition of `fast') are therefore often eschewed in favor of predictability: examples include demand paging or `cycle-stealing' implementations of \textit{Direct Memory Access} (DMA).
 
-To implement a real-time computing system, the entire system can be written from the ground up, without using any existing code. This can often be costly in terms of time, however. In order to facilitate quick development of real-time systems, `general-purpose' real-time operating systems have been developed, which contain facilities like task management, mutual exclusion primitives, et cetera.
+To implement a real-time computing system, the entire system can be written from the ground up, without using any existing code. This can often be costly in terms of time, however. In order to facilitate quick development of real-time systems, `general-purpose' real-time operating systems have been developed, which contain facilities such as task management and mutual exclusion primitives.
 
 \subsubsection{\ucos} \label{sec:ucos}
 The real-time operating system that is used in this thesis is called \textit{\ucosiii}. The original version of \ucos was written in 1991 by Jean J. Labrosse, due to dissatisfaction with commercial kernel offerings at the time. As the decade came to a close, Labrosse decided to work on the operating system full-time, founding Micrium, Inc., which currently develops and sells the kernel commercially, with source available at no cost for research purposes. Versions of \ucos have been used in a wide variety of applications, among them NASA's Curiosity Rover\footnote{https://www.micrium.com/about/customer-stories/curiosity/}. It is especially suited to this thesis because of the breadth of its documentation: firstly, an extensive manual \cite{micrium:ucosmanual} is supplied with the source code, and secondly, the source code itself is heavily commented and written with readability in mind.
 
 \subsubsection{Research question}
-As described above, predictability is a vital part of real-time systems. Naturally, in systems that consist of multiple tasks, an important factor in guaranteeing task execution within given deadlines is the \textit{task scheduler}. As noted in \textcite{buttazzo2011hard}, however, many real-time kernels lack functionality that guarantees task schedulability. In many cases, a general priority-based scheduler is implemented, with possible round-robin scheduling functionality. In this thesis, I will explore the benefits of guarantee-backed scheduling algorithms through both literature analysis and through the implementation of a guarantee-backed scheduling algorithm in a real-time operating system (\ucosiii), and by evaluating it on real hardware (a first-generation Raspberry Pi). The research question I am aiming to answer is:
+As described above, predictability is a vital part of real-time systems. Naturally, in systems that consist of multiple tasks, an important factor in guaranteeing task execution within given deadlines is the \textit{task scheduler}. As noted in \textcite{buttazzo2011hard}, however, many real-time kernels lack functionality that guarantees task schedulability. In many cases, a general priority-based scheduler is implemented, with possible round-robin scheduling functionality. In this thesis, I will explore the benefits of guarantee-backed scheduling algorithms through literature analysis and through the implementation of a guarantee-backed scheduling algorithm in a real-time operating system (\ucosiii), combined with evaluating it on real hardware (a first-generation Raspberry Pi). The research question I am aiming to answer is:
 
 \begin{outline}
     \itemsep=0em
@@ -89,7 +89,7 @@ All data and code used in the production of this thesis is available online, wit
 %
 
 \chapter{Related work}
-Running \ucos on the Raspberry Pi has been explored earlier, most notably in a thesis by \textcite{sfd:realpi}, which details the porting of \ucosii to a number of different versions of the Pi. The port in this work differs, both in the operating system version used and the hardware used on the Pi, most notably when it comes to the choice of UART and timer.
+Running \ucos on the Raspberry Pi has been explored earlier, most notably in a thesis by \textcite{sfd:realpi}, which details the porting of \ucosii to a number of different versions of the Pi. The port in this work differs, both in the operating system version used and the use of the Pi's hardware components, most notably when it comes to the choice of UART and timer.
 
 On the topic of scheduling in \ucos specifically, not a lot of research seems to have been done -- perhaps due to its lack of open-source licensing. Nevertheless, there is some interesting work in this area.
 
@@ -111,7 +111,7 @@ Historically important papers in the field include Liu and Layland's seminal 197
 %
 
 \chapter{Scheduling}
-In contemporary operating systems, it is common to have many programs in memory, executing concurrently. This concept is called \textit{multitasking}. To give the illusion of multiple programs running `at the same time' on a single core, program execution is interleaved, by letting a program run for a small time slice before switching to another. The criteria that are used to assign tasks to the CPU are contained in a \textit{scheduling policy}.
+In contemporary operating systems, it is common to have many programs in memory, executing concurrently. To give the illusion of multiple programs running `at the same time' on a single core, program execution is interleaved, by letting a program run for a small time slice before switching to another. Many different algorithms for deciding what program to run at a given time are available, optimizing for different system characteristics.
 
 \section{The scheduling problem}
 \textcite{buttazzo2011hard} defines the scheduling problem as follows. Given a set of $n$ tasks $\Gamma = \set{\tau_1, \tau_2, \ldots, \tau_n}$, a set of $m$ processors $P = \set{P_1, P_2, \ldots, P_m}$, a set of $s$ types of resources $R = \set{R_1, R_2, \ldots, R_s}$, a directed acyclic graph (DAG) describing the precedence relation among tasks, and a set of timing constraints associated with each task, assign processors from $P$ and resources from $R$ to tasks in $\Gamma$ in order to complete all tasks under the specified constraints. The scheduling problem, in its general form, has been shown to be NP-complete, and hence computationally intractable.
@@ -129,6 +129,8 @@ The following scheduling algorithm classes are adapted from \textcite{buttazzo20
     \1 Guarantee-backed vs. Best-effort
         \2 In a guarantee-backed scheduling algorithm, tasks are only accepted if a guarantee can be made that they can be scheduled, whereas in a best-effort system, tasks may be accepted that cannot be allowed to run to completion for fear of jeopardizing other tasks.
 \end{outline}
+
+\noindent In this thesis, the focus lies on preemptive, guarantee-backed schedulers.
 
 \section{Task characteristics in real-time systems}
 Scheduling algorithms usually make decisions on which task to schedule based on characteristics of the tasks in the given task set, perhaps augmented with characteristics of the system they are running on. A few task characteristics that are common on real-time systems, and used in the scheduling algorithms below, are detailed below. An illustration of these characteristics can be seen in figure~\ref{fig:taskcharacteristics}.
@@ -149,33 +151,28 @@ Scheduling algorithms usually make decisions on which task to schedule based on 
     \1 A task's \textbf{lateness} ($L_i$) is the difference between the task's absolute deadline and its finishing time.
 \end{outline}
 
-\noindent This thesis focuses on periodic task sets, where each task consists of an infinite number of task instances which are run periodically. The period for a given periodic task is denoted $T_i$. The task characteristics above can vary per instance; all instances will have the same relative deadline, but the absolute deadline obviously varies. To refer to a characteristic for a specific instance, the notation $d_{i,k}$ is commonly used, where we refer to the absolute deadline of the $k$th instance of task $\tau_i$.
+\noindent This thesis focuses on periodic task sets, where each task consists of an infinite number of task instances which are run periodically. The period for a given periodic task is denoted $T_i$. The task characteristics above can vary per instance; all instances will have the same relative deadline, but the absolute deadline obviously varies. To refer to a characteristic for a specific instance, the notation $d_{i,k}$ is commonly used, where we refer to the absolute deadline of the $k$th instance of task $\tau_i$. Furthermore, periodic task sets have a \emph{hyperperiod}, denoted $H$, which is the period after which the entire task set schedule repeats itself. In the case of a periodic task set with relative deadlines equal to or smaller than periods, the hyperperiod is simply equal to the least common multiple of all periods in a task set; i.e.
+
+\[ H = \lcm(T_1, T_2, \ldots, T_n) \] 
 
 Commonly, a periodic task's relative deadline is equal to its period. In the following figures in this thesis, since arrival times and deadlines coincide, they are shown simply as vertical lines, instead of as arrows.
 
-\section{Static scheduling algorithms}
-As mentioned in the list of scheduling algorithm characteristics, \emph{static scheduling algorithms} do not take varying system behavior into account, and make use of characteristics that are known at system start.
-
-\subsection{Rate Monotonic}
+\section{Fixed-priority scheduling: Rate Monotonic}
 The \emph{Rate Monotonic} algorithm is a scheduling algorithm for periodic task sets which assigns priorities based on the frequency of the task, where, if the task needs to run more often, it gets a higher priority. Rate Monotonic is a fixed-priority assignment, so task priorities do not change over time. \textcite{Liu1973} proved the optimality of Rate Monotonic among fixed-priority assignments.
 
 An example task set as scheduled by Rate Monotonic can be seen in figure~\ref{fig:rmexample}. As $\tau_1$ has a smaller period, it has higher priority than $\tau_2$.
 
 \begin{figure}[htpb]
     \centering
-    \includegraphics[width=0.8\textwidth]{rmexample.eps}
+    \includegraphics[width=0.9\textwidth]{rmexample.eps}
     \caption{An example task set as scheduled by the Rate Monotonic algorithm.}
     \label{fig:rmexample}
 \end{figure}
 
+\section{Dynamic-priority scheduling: Earliest Deadline First}
+The \emph{Earliest Deadline First} algorithm is a solution to the problem of scheduling $n$ independent tasks on a uniprocessor system, with dynamic arrivals and preemption. The algorithm simply picks the task with the earliest absolute deadline among all ready tasks, and executes it. When a new task arrives with an earlier deadline, the running task is preempted in favor of the new task.
 
-
-\section{Dynamic scheduling algorithms}
-
-\subsection{Earliest Deadline First}
-The \emph{Earliest Deadline First} algorithm is an elegant solution to the problem of scheduling $n$ independent tasks on a uniprocessor system, with dynamic arrivals and preemption. The algorithm simply picks the task with the earliest absolute deadline among all ready tasks, and executes it. When a new task arrives with an earlier deadline, the running task is preempted in favor of the new task.
-
-The Earliest Deadline First algorithm is optimal with respect to maximum lateness; i.e. it minimises the maximum lateness of tasks in a task set. Due to its dynamic priority assignment, it can achieve a greater processor utilization than fixed-priority assignments such as Rate Monotonic. One example of EDF producing a feasible schedule where RM does not can be seen in figure~\ref{fig:edfrmfeasible}.
+The Earliest Deadline First algorithm is optimal with respect to maximum lateness; i.e. it minimizes the maximum lateness of tasks in a task set. Due to its dynamic priority assignment, it can achieve a greater processor utilization than fixed-priority assignments such as Rate Monotonic. One example of EDF producing a feasible schedule where RM does not can be seen in figure~\ref{fig:edfrmfeasible}.
 
 \begin{figure}[htpb]
     \centering
@@ -184,6 +181,8 @@ The Earliest Deadline First algorithm is optimal with respect to maximum latenes
     \caption{A comparison of schedules generated for a task set with $\tau_1 = (C = 2, T = 5)$ and $\tau_2 = (C = 4, T = 7)$. Above, the Rate Monotonic schedule can be seen to miss a deadline for the first instance of $\tau_2$, whereas EDF produces a feasible schedule for the task set.}
     \label{fig:edfrmfeasible}
 \end{figure}
+
+In its elementary form, EDF is incapable of handling task sets which have resource or precedence constraints. Extensions to EDF have been developed which take these extra constraints into account; one of them, which handles precedence constraints, is described below.
 
 \subsubsection{Precedence constraints}
 Using a transformation on the task set, EDF can be extended to handle dependent tasks\cite{Chetto1990}. The idea is as follows. Say we have a task set, with two tasks: \task{1} and \task{2}, where \task{2} is dependent on \task{1}. To honor this precedence constraint, we can modify the arrival time of \task{2}, so that it cannot start before \task{1} has finished. Note that, if there is a valid schedule for the task set which satisfies the precedence constraint, the following conditions are met:
@@ -201,7 +200,7 @@ Similarly, task deadlines need to be modified, so that \task{1} finishes before 
 The task sets that can be scheduled vary by scheduling algorithm, although there are of course task sets which are not schedulable by even a clairvoyant scheduling algorithm. We would like to evaluate whether task sets are schedulable before running them in a system, as to prevent situations where tasks miss their deadlines. This is commonly called \emph{schedulability analysis}.
 
 \subsection{Processor utilization}
-There are a number of metrics that tell us something about the required computation time for a given periodic task set. One such metric is the $U$, the \emph{processor utilization} of a task set -- the fraction of processor time required by the task set. This is given simply by
+There are a number of metrics that tell us something about the required computation time for a given periodic task set. One such metric is the $U$, the \emph{processor utilization} of a task set -- the fraction of processor time required by the task set. This is given by
 
 \[ U = \sum_i \dfrac{C_i}{T_i} \]
 
@@ -228,7 +227,7 @@ One interesting note is the variance of the upper bound depending on the ratio b
 The Liu-Layland schedulability test is, however, not exact -- it rejects task sets which could be executed without missing any deadlines. Better schedulability tests are given by \textcite{Bini2003}, which gives a less strict sufficient condition (improving the acceptance ratio up to $\sqrt{2}$ for a large number of tasks), and exact schedulability tests are given in \textcite{Lehoczky1989} and \textcite{Audsley1993}.
 
 \subsection{Earliest Deadline First}
-Depending on task set characteristics, Earliest Deadline First schedulability analysis can be very simple. Liu and Layland show that the upper bound on processor utilization for EDF is 1, and this turns out to be a necessary and sufficient condition if task deadlines are equal to their periods. That is, for a given task set $\Gamma$ with tasks $\tau_1, \tau_2, \ldots, \tau_m$, if
+Depending on task set characteristics, Earliest Deadline First schedulability analysis can be very simple. Liu and Layland show that the upper bound on processor utilization for EDF is 1, and this turns out to be a necessary and sufficient condition if task deadlines are equal to their periods. That is, for a given task set $\Gamma$ with tasks $\tau_1, \tau_2, \ldots, \tau_m$ whose relative deadline is equal to their period, iff
 
 \[ U_\Gamma = \sum_{i=1}^m \dfrac{C_i}{T_i} \le 1 \]
 
@@ -246,9 +245,9 @@ In case task deadlines are less than or equal to their periods, schedulability a
 
 \[ g(t_1, t_2) = \sum_{i=1}^m g_i(t_1, t_2) \]
 
-\noindent and the task set is feasible if, for any interval of time, the processor demand does not exceed the available processor time.
+\noindent and the task set is feasible if, for any interval of time, the processor demand does not exceed the available processor time.\\
 
-This criterion is used in this work.
+\noindent This criterion is used in this work.
 
 \section{Combining periodic and aperiodic tasks}
 The scheduling algorithms discussed in the previous section have been considered in periodic situations only. In real systems, there are, however, often non-real-time jobs that must be executed. We would like to execute these jobs without jeopardizing real-time task schedulability. In this section, algorithms that can handle these heterogeneous task sets are discussed.
@@ -294,27 +293,22 @@ Note that this deadline is pessimistic, in the sense that it could be set earlie
 \section{Scheduling in \ucosiii}
 Just as in many real-time operating systems, the scheduler used in \ucosiii is a generic priority-based scheduler. In these schedulers, tasks are assigned priorities and the scheduler simply runs the highest priority ready task. The priorities are assigned at task creation, but there is optional support for changing priorities at run-time. The number of priority levels is configurable at compile time.
 
-There is optional support for round-robin scheduling. If it is enabled and multiple tasks are ready at a given priority level, in a cyclical fashion, each task is run for a time quantum, which is configurable at task creation time.
+There is optional support for round-robin scheduling. If it is enabled and multiple tasks are ready at a given priority level, each task is run for a time quantum in cyclical fashion. The length of the time quantum is configurable at task creation time.
 
 The flexibility in the number of priority levels seems to suggest that many dynamic scheduling algorithms (such as EDF) could be built on top of this priority-based scheduler. Every additional priority level, however, brings a memory cost with it. \ucos uses a \textit{priority bitmap} (see fig.~\ref{fig:priobitmap}) to keep track of which priorities have associated ready tasks, and each priority has its own ready list. This diminishes the flexibility of the scheduler, but improves the scheduling performance in the case where the number of priorities is fairly low.
 
 Of course, the number of priority levels need only be as large as the number of tasks in the system. In this case, however, implementing an EDF scheduler becomes both more complicated and more expensive. As noted in \textcite[\S 2]{Buttazzo2005}, in the worst case, when a task priority changes, the priority of all tasks in the system may need to be remapped, an expensive operation.
 
-\section{Worst-case Execution Time Analysis}
-One of the task parameters which is essential when guarantee-backed scheduling is applied is the worst-case execution time of a task. The worst-case execution time needs to be accurately determined, as an underestimation can induce invalid guarantees. Additionally, a pessimistic worst-case execution time will cause the system to reject task sets which may have been feasible in practice. This raises the question: how can worst-case execution times be accurately determined?
+For these reasons, implementing an EDF scheduler on top of the built-in scheduler is non-optimal.
 
-Worst-case execution time analysis is a whole discipline unto itself, with a range of analytical and measurement-based approaches. Ideally, a mix of analytical and measurement-based approaches is used, as analytical static analysis often fails to take into account run-time behavior such as caching, while a purely measurement-based approach may be limited due to the rare occurrence of extremely long execution times.
-
-\textcite{hansen_et_al:wcet} detail a method of determining worst-case execution times based on a fusion of measurement-based and analytical approaches. The method makes use of Extreme Value Theory (EVT), a branch of mathematics which is concerned with reasoning about the tail end of distributions. Using EVT, the paper posits that the so-called \emph{block maxima} of execution times are distributed according to the Generalized Extreme Value distribution\footnote{A similar concept which the reader may be familiar with is the Central Limit Theorem, which states that, under certain conditions, sample means are normally distributed.}, and the parameters of that distribution can be fit to sample data. Using the distribution, a probabilistic worst-case execution time can then be determined, along with a probability that the execution time is exceeded.
-
-\begin{figure}[htpb]
+\begin{figure}[ht]
     \centering
     \includegraphics[width=0.8\textwidth]{priobitmap.png}
     \caption{An illustration of \ucosiii's priority bitmap. Taken from the user manual, figure 6-3. If a bit is set, it indicates a ready task in the ready list of the associated priority. The highest priority task can be found quickly by using processors' `count-leading-zeros' instruction.}
     \label{fig:priobitmap}
 \end{figure}
 
-%\subsection{The scheduling implementation}
+
 
 %
 %
@@ -373,7 +367,7 @@ As mentioned in the section on hardware, the Raspberry Pi's startup process is m
 
 The port startup code (\code{startup.s}) subsequently configures and initializes the processor, by setting up stack pointers, initializing interrupt vectors and enabling the floating-point unit, branch predictor, and instruction cache\footnote{Data cache cannot be enabled without using virtual memory, as it would interfere with memory-mapped peripherals. It is left disabled in the interest of time.}. After initializing the C environment by zeroing out the BSS, control is transferred to the C main function. In C, hardware such as serial I/O ports and the timer interrupt are configured using functions in the board support package. Lastly, the OS is initialized with the \code{OSInit} function, tasks are created, and the operating system is started with the \code{OSStart} function.
 
-\subsection{Timers}
+\section{Timers}
 In real-time systems, there obviously needs to be a correspondence between the time as measured in the system and external time. This is where hardware timers come in. The Raspberry Pi provides both running counter functionality (which allows the system to have a clock -- though it is not a real-time clock, which would keep an accurate date and time of day across reboots) and timer functionality (so the system is interrupted after a given time is elapsed).
 
 As described in the BCM2835 peripheral data sheet, the Raspberry Pi contains two timers; a timer for the ARM processor itself and a system timer. Although \textcite{sfd:realpi} opts to use the ARM timer, the peripheral data sheet suggests using the system timer when accurate timing is required.\cite[p. 196]{bcm:2835peripherals}.
@@ -382,7 +376,7 @@ The system timer has microsecond resolution\footnote{Although the ARM timer has 
 
 Two of the timer channels are in use by the VideoCore IV GPU, and are therefore not usable. Timer channel 1 and 3 are, however, available. We only need a single timer channel, and currently use timer channel 1.
 
-\subsection{Interrupts}
+\section{Interrupts}
 As discussed in the previous section, the hardware timer can trigger an interrupt when a timer channel is matched. The system timer is one of the hardware components which is poorly described in the peripheral data sheet, but information found online can close that gap.
 
 Interrupt handling in the ARM architecture differs significantly from similar features in the x86 architecture. Where the latter uses an interrupt vector table which dispatches a specific interrupt to a specific interrupt service routine, the former uses a much more generic approach.
@@ -412,7 +406,7 @@ In effect, processor faults and software interrupts have their own exception, an
 
 As mentioned, the interrupts are handled either by the `fast interrupt' handler or the normal `interrupt' handler. The BCM2835 allows the systems programmer to route a single interrupt source to the fast interrupt vector, which has more banked registers and therefore allows for faster interrupt processing. This is not used in the port currently, as it would complicate the task switching code, which can currently use the same assembly for returning to voluntarily yielded code and interrupted code.
 
-\subsection{Serial I/O} \label{sec:miniuart}
+\section{Serial I/O} \label{sec:miniuart}
 Implementing input/output capabilities is not strictly required to get \ucosiii running on the Raspberry Pi. An operating system is of little use without any I/O capabilities, however, and being able to output debugging information is also of great use in porting.
 
 The type of I/O that the port has support for is very common in embedded devices, and was used throughout much of the twentieth century for communication between computers and associated terminals: serial communication using a UART. The peripheral data sheet tells us that the Raspberry Pi contains two UARTs, a primary ARM PL011 UART and a secondary so-called `mini UART'. Due to limitations such as the shallow FIFOs, this port uses the primary UART.
@@ -435,16 +429,14 @@ In the process of rewriting \ucosiii to make use of the EDF scheduler, the probl
 In \ucosiii, tasks are represented by \code{OS_TCB} objects, which contain information such as the task's stack pointer, entry point, the next and previous task in its ready list, et cetera. The EDF scheduler adds the following attributes to the task objects:
 
 \begin{itemize}
-    \item \code{EDFPeriod} -- The period of the task, in timer ticks.
+    \item \code{EDFPeriod} -- The period of the task, in microseconds.
     \item \code{EDFCurrentActivationTime} -- The activation time of the current instance of the task, in microseconds.
     \item \code{EDFRelativeDeadline} -- The deadline of the task relative to its activation time, in microseconds.
     \item \code{EDFWorstCaseExecutionTime} -- The worst-case execution time of the task, in microseconds.
     \item \code{EDFHeapIndex} -- The EDF heap index associated with the task.
 \end{itemize}
 
-The period is represented in timer ticks rather than microseconds due to the fact that the task can only be activated by the tick task - supporting other periods would be misleading.
-
-To efficiently determine the task with the earliest deadline, tasks should be stored in a data structure which supports quick access to some 'minimal' element. The data structure most obviously suited to this is the min-heap, providing $O(\log n)$ insertion, $O(n)$ arbitrary element deletion, $O(\log n)$ minimal element deletion and $O(1)$ minimal element lookup. Additionally, in exchange for increased memory usage, arbitrary element deletion can be done in $O(\log n)$, by keeping a reverse mapping from element to heap index (\code{EDFHeapIndex}).
+To efficiently determine the task with the earliest deadline, tasks should be stored in a data structure which supports quick access to some `minimal' element. The data structure most obviously suited to this is the min-heap, providing $O(\log n)$ insertion, $O(n)$ arbitrary element deletion, $O(\log n)$ minimal element deletion and $O(1)$ minimal element lookup. Additionally, in exchange for increased memory usage, arbitrary element deletion can be done in $O(\log n)$, by keeping a reverse mapping from element to heap index (\code{EDFHeapIndex}).
 
 The heap is implemented as an implicit data structure, being little more than an array of \code{OS_TCB*} elements with operations defined on it.
 
@@ -479,7 +471,7 @@ A clear primary peak is visible around 8µs. However, larger task switch times d
 
 \begin{figure}[htpb]
     \centering
-    \includegraphics[width=0.8\textwidth]{task_switch_time.eps}
+    \includegraphics[width=\textwidth]{task_switch_time.eps}
     \caption{A histogram of task switch time between round-robin tasks (mean 8.17µs; std. dev. 0.90µs). Total samples: 1,024,000.}
     \label{fig:rrhist}
 \end{figure}
@@ -489,14 +481,17 @@ As the number of priorities increases, the size of the priority bitmap increases
 
 \begin{figure}[htpb]
     \centering
-    \includegraphics[width=0.8\textwidth]{boxplot.eps}
+    \includegraphics[width=\textwidth]{boxplot.eps}
     \caption{Box plots of task switch time as the number of priorities increases. As task switches were measured over a fixed period of time, the number of samples for each box plot varies, from a minimum of 547,535 to a maximum of 938,926.}
     \label{fig:prioboxplot}
 \end{figure}
 
-\section{Task set response time and schedulability}
+\section{Task set schedulability}
+In this experiment, the new EDF scheduler is compared to the built-in scheduler when it comes to task set schedulability. Random task sets were generated and EDF schedulability was analyzed using the processor demand criterion, then confirmed by running the task sets on hardware. The same task sets were run using the Rate Monotonic algorithm and the built-in fixed priority scheduler. The method by which task sets were generated and run is discussed below.
+
 \subsection{Determining worst-case execution times}
-As discussed in the scheduling chapter, when using guarantee-backed scheduling, an accurate worst-case execution time estimation for tasks is paramount to ensure that the provided guarantees actually have meaning. The same is true when evaluating scheduling performance. However, worst-case execution time estimation is a difficult task for even simple code, and in these experiments, I would like to greatly vary task sets, requiring me to perform worst-case execution time analysis for many task sets. Therefore, I have chosen to simulate actual tasks by executing instructions which do not perform any useful work, but have very predictable timing characteristics. These timing characteristics can be found in chapter 16 of the ARM Technical Reference Manual for the Pi's ARM1176JZF-S processor\cite{arm:arm1176}.
+As discussed in the scheduling chapter, when using guarantee-backed scheduling, an accurate worst-case execution time estimation for tasks is paramount to ensure that the provided guarantees actually have meaning. The same is true when evaluating scheduling performance. However, worst-case execution time estimation is a difficult task for even simple code, and in these experiments, I would like to greatly vary task sets, requiring me to perform worst-case execution time analysis for many task sets. Therefore, I have chosen to simulate actual tasks by executing instructions which do not perform any useful work, but have very predictable timing characteristics. These timing characteristics can be found in chapter 16 of the ARM Technical Reference Manual for the Pi's ARM1176JZF-S processor\cite{arm:arm1176}.\\
+
 
 \begin{lstlisting}
 wait_for_cycles:
@@ -521,7 +516,8 @@ wait_for_cycles:
 
 The cycle count for the given instructions could vary based on presence in the instruction cache or other architectural buffers (such as the instruction prefetch buffer). Most important, however, is the timing of the instructions in the inner loop, as they account for the bulk of the cycles used. Experimentally, the 2-cycle inner loop behavior is verified in \code{apps/waittest/app.c}.
 
-One issue with using cycles to wait for a given period of time is the variability of the Pi's clock speed. The Pi will, however, only throttle the clock speed in two cases; when an undervoltage is detected (this occurs when the power supply cannot supply 5 volts at the requested amperage, so the voltage drops) or when the core temperature gets above 80 degrees\cite{rpi:gpuclockpower}. Measuring the GPIO voltage during system stress reveals that my power supply can consistently supply five volts. The second case does not occur on first-generation Pis due to its low-power processor (later generations have higher clock speeds and are multi-core chips, and therefore have a larger thermal output and are at higher risk of overheating). Therefore, we can rely on the system clock staying constant.
+One issue with using cycles to wait for a given period of time is the variability of the Pi's clock speed. The Pi will, however, only throttle the clock speed in two cases; when an undervoltage is detected (this occurs when the power supply cannot supply 5 volts at the required amperage, so the voltage drops) or when the core temperature gets above 80 degrees\cite{rpi:gpuclockpower}. Measuring the GPIO voltage during system stress reveals that my power supply can consistently supply five volts. The second case does not occur on first-generation Pis due to its low-power processor (later generations have higher clock speeds and are multi-core chips, and therefore have a larger thermal output and are at higher risk of overheating). Therefore, we can rely on the system clock staying constant.
+
 
 \chapter{Discussion and conclusion}
 As discussed in the introduction, using guarantee-backed scheduling is yet another tool in the toolbox of achieving predictable and safe real-time computing. I hope this thesis gives a good overview of the required information needed to use guarantee-backed scheduling, and shows where guarantee-backed scheduling is strong.
