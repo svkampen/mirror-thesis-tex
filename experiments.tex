@@ -3,9 +3,9 @@
 The time taken to switch between tasks is evaluated, for both round-robin task switching and normal inter-priority task switching.
 
 \subsection{\ucosiii scheduler: round-robin task switch time}
-The round-robin task switch time under the default \ucosiii scheduler was evaluated (code in: \code{apps/rrmeasure/app.c}). The tick rate was set to 100Hz. The task switch time was sampled 1,024,000 times, and a histogram of the task switch time can be seen in figure~\ref{fig:rrhist}. The measured time is the time to yield a given task and switch in another (i.e. is measured from just before a yield call until control is given to the next task).
+The round-robin task switch time under the default \ucosiii scheduler is evaluated (code in: \code{apps/rrmeasure/app.c}). The tick rate was set to 100Hz. The task switch time was sampled 1,024,000 times, and a histogram of the task switch time can be seen in figure~\ref{fig:rrhist}. The measured time is the time to yield a given task and switch in another (i.e. is measured from just before a yield call until control is given to the next task).
 
-A clear primary peak is visible around 8µs. However, larger task switch times do occur. One explanation for them lies in the tick interrupt, which suspends the task for some time, thus resulting in a larger task switch time. Another phenomenon, whose cause is not entirely clear, has something to do with the number of round-robin tasks:  One cause of the outliers is the tick interrupt occurring every 100 Hz. Another has to do with the number of round-robin tasks: every $n$ task switches after some number of ticks, an outlier is produced.
+A clear primary peak is visible around 8µs. However, larger task switch times do occur. One explanation for them lies in the tick interrupt, which suspends the task for some time, thus resulting in a larger task switch time. Another phenomenon, whose cause is not entirely clear, has something to do with the number of round-robin tasks:  every $n$ task switches after some number of ticks, an outlier is produced.
 
 \begin{figure}[htpb]
     \centering
@@ -28,18 +28,22 @@ As the number of priorities increases, the size of the priority bitmap increases
 In this experiment, the new EDF scheduler is compared to the built-in scheduler when it comes to task set schedulability. Random task sets were generated and EDF schedulability was analyzed using the processor demand criterion, then confirmed by running the task sets on hardware. The same task sets were run using the Rate Monotonic algorithm and the built-in fixed priority scheduler. The method by which task sets were generated and run is discussed below.
 
 \subsection{Determining worst-case execution times}
-As discussed in the scheduling chapter, when using guarantee-backed scheduling, an accurate worst-case execution time estimation for tasks is paramount to ensure that the provided guarantees actually have meaning. The same is true when evaluating scheduling performance. However, worst-case execution time estimation is a difficult task for even simple code, and in these experiments, I would like to greatly vary task sets, requiring me to perform worst-case execution time analysis for many task sets. Therefore, I have chosen to simulate actual tasks by executing instructions which do not perform any useful work, but have very predictable timing characteristics. These timing characteristics can be found in chapter 16 of the ARM Technical Reference Manual for the Pi's ARM1176JZF-S processor\cite{arm:arm1176}.\\
+As discussed in the chapter on scheduling, when using guarantee-backed scheduling, an accurate worst-case execution time estimation for tasks is paramount to ensure that the provided guarantees actually have meaning. The same is true when evaluating scheduling performance. However, worst-case execution time estimation is a difficult task for even simple code, and in these experiments, I would like to greatly vary task sets, requiring me to perform worst-case execution time analysis for many task sets. Therefore, I have chosen to simulate actual tasks by executing instructions which do not perform any useful work, but have very predictable timing characteristics. These timing characteristics can be found in chapter 16 of the ARM Technical Reference Manual for the Pi's ARM1176JZF-S processor\cite{arm:arm1176}.\\
 
 
 \begin{lstlisting}
 wait_for_cycles:
+    lsr r0,r0,#1
+loop$:
     subs r0, r0, #1
-    bne wait_for_cycles
+    bne loop$
     bx lr
 \end{lstlisting}
 
 \begin{enumerate}
-    \item The \code{wait_for_cycles} subroutine waits for $2r_0 ~10-14$ cycles. A description of the cycle count of the used instructions is as follows;
+    \item The \code{wait_for_cycles} subroutine waits for approximately $r_0$ cycles. A description of the cycle count of the used instructions is as follows;
+    \item The \code{lsr} instruction is syntactic sugar for a \code{mov} instruction with included shift, and therefore takes a single cycle\cite[p. 16-7]{arm:arm1176}. It requires its source register as an early register, but that should be no issue as this is the first instruction in the function.
+    \setcounter{enumi}{3}
     \item Data processing instructions not targeting the program counter and without included shifts, such as this \code{subs} instruction, take a single cycle\cite[p. 16-7]{arm:arm1176}.
     \item Branch instructions such as \code{bne} have complex timing characteristics, since the ARM1176JZF-S processor includes both a static and a dynamic branch predictor, as well as a return prediction stack\cite[p. 16-2]{arm:arm1176}. Let us assume a scenario where we want to wait for a number of cycles that is greater than one.
 
@@ -59,26 +63,26 @@ One issue with using cycles to wait for a given period of time is the variabilit
 To measure task set schedulability, a range of random task sets was generated. The parameters for these task sets were as follows:
 
 \begin{itemize}
-    \item \textbf{Target processor utilization} varied between 65\% and 98,5\%, skewing slightly toward higher processor utilization since fewer randomly generated task sets hit the higher processor utilization.
+    \item \textbf{Target processor utilization} varied between 65\% and 100\%, skewing slightly toward higher processor utilization since fewer randomly generated task sets hit the higher processor utilization. In the end, the accepted task set with the highest processor utilization had $U \approx 0.985$.
     \item The \textbf{task utilization} was picked uniformly between zero and the remaining available processor utilization
     \item The \textbf{period} was chosen between 250 and 1000 milliseconds, in multiples of 10 to get a tractable hyperperiod.
     \item The \textbf{worst-case execution time} of a task was derived by multiplying a task's utilization with its period.
-    \item The \textbf{relative deadline} of a task was generated by subtracting a third of the difference Better
+    \item The \textbf{relative deadline} of a task was generated by subtracting a third of the difference between the period and the worst-case execution time.
     \item The \textbf{number of tasks} varied between 5 and 10, with a mean of 5.75 tasks in a task set.
 \end{itemize}
 
-\noindent Additionally, the \ucos tick task was added to the task sets when computing the scheduling guarantee. The parameters of the tick task were estimated as $T_{\text{tick}} = 1$ tick, $C_\text{tick} = 50$\textmu s , $D_\text{tick} = 250$\textmu s.
+\noindent Additionally, the \ucos tick task was added to the task sets when computing the scheduling guarantee. As noted in the chapter on implementation, parameters of the tick task were estimated as $T_{\text{tick}} = 1$ tick, $C_\text{tick} = 50$\textmu s , $D_\text{tick} = 250$\textmu s.
 
-10,000 task sets were generated. Task sets that had fewer than 5 tasks or a hyperperiod that was longer than 100 seconds were excluded. This left 2263 task sets, which were partitioned into 1785 task sets that passed the schedulability guarantee and 478 task sets that did not. These task sets were subsequently run.
-
-Task generation code can be found in \code{task_generate.py}.
+10,000 task sets were generated. Task sets that had fewer than 5 tasks or a hyperperiod that was longer than 100 seconds were excluded. This left 2407 task sets, which were partitioned into 1929 task sets that passed the schedulability guarantee and 478 task sets that did not. These task sets were subsequently run.
 
 \subsection{Running task sets}
 To validate the schedulability guarantee, the task sets were executed on the real hardware. To evaluate the practical schedulability of a task set, the task set was run until the end of its hyperperiod, or until its first deadline miss, whichever came first. Since, in all of these task sets, the relative deadlines of tasks are smaller or equal to their period, when the hyperperiod passes, the schedule repeats itself, and the task set does not need to be run any longer to evaluate schedulability.
 
+The data collection was done automatically, by restarting the Raspberry Pi using its hardware watchdog after task set execution, compiling a new kernel with the next task set, and loading that over the serial connection. Execution was then monitored, marking a task set as `failed' when a deadline miss was reported, and as `successful' otherwise.
+
 \subsubsection{Results using the EDF scheduler}
-All 1785 task sets that passed the schedulability guarantee were run without any deadline misses. Of the 478 rejected task sets, 46 ran without any deadline misses, whereas the other 432 missed at least one deadline.
+All 1929 task sets that passed the schedulability guarantee were run without any deadline misses. Of the 478 rejected task sets, 46 ran without any deadline misses, whereas the other 432 missed at least one deadline.
 
 \subsubsection{Results using the RM scheduler}
 
-
+\emph{to be filled in later}

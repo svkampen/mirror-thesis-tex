@@ -1,19 +1,18 @@
-\chapter{Implementing a new scheduler}
-The scheduling algorithm implemented for this thesis is the \emph{Earliest Deadline First} algorithm, with the processor demand criterion guarantee algorithm.
-
-\section{Determining EDF parameters for system tasks}
-In the process of rewriting \ucosiii to make use of the EDF scheduler, the problem of determining EDF parameters for some key system tasks surfaced.
+\chapter{Implementing an EDF scheduler}
+Implementing a new scheduler in \ucosiii consists largely of two parts: changing the data structures that are used to hold tasks, and implementing the scheduling functions themselves.
 
 \section{Data structures}
 In \ucosiii, tasks are represented by \code{OS_TCB} objects, which contain information such as the task's stack pointer, entry point, the next and previous task in its ready list, et cetera. The EDF scheduler adds the following attributes to the task objects:
 
 \begin{itemize}
     \item \code{EDFPeriod} -- The period of the task, in microseconds.
-    \item \code{EDFCurrentActivationTime} -- The activation time of the current instance of the task, in microseconds.
     \item \code{EDFRelativeDeadline} -- The deadline of the task relative to its activation time, in microseconds.
     \item \code{EDFWorstCaseExecutionTime} -- The worst-case execution time of the task, in microseconds.
     \item \code{EDFHeapIndex} -- The EDF heap index associated with the task.
+    \item \code{CurrentActivationTime} -- The activation time of the current instance of the task, in microseconds.
 \end{itemize}
+
+\noindent All task attributes above are unsigned 64-bit integers, aside from the heap index, which uses the value $-1$ to represent a task that is not on the heap, and is therefore a signed integer.
 
 To efficiently determine the task with the earliest deadline, tasks should be stored in a data structure which supports quick access to some `minimal' element. The data structure most obviously suited to this is the min-heap, providing $O(\log n)$ insertion, $O(n)$ arbitrary element deletion, $O(\log n)$ minimal element deletion and $O(1)$ minimal element lookup. Additionally, in exchange for increased memory usage, arbitrary element deletion can be done in $O(\log n)$, by keeping a reverse mapping from element to heap index (\code{EDFHeapIndex}).
 
@@ -29,6 +28,14 @@ The \code{OS_TaskBlock} and \code{OS_TaskRdy} functions are functionally the sam
 \code{OSSched} and \code{OSIntExit} are simplified in computational complexity. As the tasks are kept in an EDF min-heap, the highest priority task can simply be found by peeking at the first element of the heap. This task is subsequently run.
 
 \code{OSTaskCreate} is the function which needed the most work -- its signature has been changed to include EDF-specific parameters, and its innards have been rewired to also make scheduling guarantees. If the guarantee fails, \code{OSTaskCreate} now returns \code{OS_ERR_EDF_GUARANTEE_FAILED} and does not put the task on the heap.
+
+An additional function that is added by the EDF scheduler and is essential to correct system operation is the \code{OSFinishInstance} function, which notifies the system of the completion of the currently running task instance and puts the task on the sleep queue to be woken up at its next activation time.
+
+\section{Adapting system tasks to work with the EDF scheduler}
+\ucosiii contains a number of system tasks, which need to be adapted to function properly under the EDF scheduler. One point of adaptation is the need to determine EDF scheduling parameters, namely relative deadlines, periods and worst-case execution times; the other is the addition of instance finishing code.
+
+Some system tasks could be disabled by disabling their corresponding features, reducing the number of tasks that needed parameter determination. The idle task, which is run when no other task is runnable, and the tick task, which keeps track of time and sleeping tasks, turned out to be the only required tasks. The idle task needs to have the lowest possible priority in an EDF system, so its relative deadline was set to \code{0xffffffffffff} microseconds, corresponding to nearly 9 years. With such a large relative deadline, the task period is insignificant, but is set to $2^{16}$ ticks (327 seconds with a tick rate of 200Hz). The idle task waits for as little time as possible, and therefore gets a worst-case execution time of zero. The tick task obviously has a period of a single tick, but its relative deadline and worst-case execution time are less easy to determine. Values of $D_\text{tick} = 250$\textmu s and $C_\text{tick} = 50$\textmu s worked well in practice, although they may have been a slight overestimation.
+
 
 \section{Implementation constraints}
 As it stands, the implementation uses a fixed-size heap, and can therefore only accommodate a fixed number of tasks. Dynamic expansion of the heap could be implemented, but could incur significant, hard-to-predict runtime overhead.
