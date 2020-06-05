@@ -223,7 +223,7 @@ Worst-case execution time analysis is a whole discipline unto itself, with a ran
 
 \subsubsection{Mathematical basis}
 
-The Fisher-Tippett-Gnedenko theorem states that the maximum of a `block' of $n$ independent, identically distributed random variables $X_1, X_2, \ldots, X_n$ can only converge in distribution to one of three forms of the Generalized Extreme Value distribution; the Gumbel distribution (in case of a light-tailed underlying distribution), the Fréchet distribution (in case of a heavy-tailed underlying distribution) or the Weibull distribution (in case of a bounded-tailed underlying distribution)\footnote{A similar concept which the reader may be familiar with is the Central Limit Theorem, which states that, under certain conditions, sample means are normally distributed.}. \citeauthor*{hansen_et_al:wcet} assume worst-case execution times are distributed according to a light-tailed distribution, leading them to assume the block maxima to be distributed according to a Gumbel distribution. This assumption is verified empirically using a chi-squared test.
+The Fisher-Tippett-Gnedenko theorem states that the maximum of a `block' of $n$ independent, identically distributed random variables $X_1, X_2, \ldots, X_n$ can only converge in distribution to one of three forms of the Generalized Extreme Value distribution; the Gumbel distribution (in case of a light-tailed underlying distribution), the Fréchet distribution (in case of a heavy-tailed underlying distribution) or the Weibull distribution (in case of a bounded-tailed underlying distribution)\footnote{A similar concept which the reader may be familiar with is the Central Limit Theorem, which states that, under certain conditions, sample means are normally distributed.}. \citeauthor*{hansen_et_al:wcet} assume worst-case execution times are distributed according to a light-tailed distribution, leading them to assume the block maxima to be distributed according to a Gumbel distribution. This assumption is verified using chi-squared tests.
 
 \subsubsection{Method}
 
@@ -245,4 +245,11 @@ When a good set of parameters is found, the Gumbel percent-point function $F_G^{
     q = (1 - p_e)^b 
 \end{equation}
 
-\noindent making $q$ the probability that none of the samples exceed the WCET value. Substituting eq. \ref{eq:gq} into eq.~\ref{eq:gpp} gives us
+\noindent making $q$ the probability that none of the samples exceed the WCET value. Substituting equation~\ref{eq:gq} into equation~\ref{eq:gpp} gives us the following equation
+
+\begin{equation}
+    F_G^{-1}(p_e) = \mu - \beta \log(-\log ((1 - p_e)^b))
+\end{equation}
+
+\noindent which can be used to get a worst-case execution time estimate from an exceedance probability.
+
