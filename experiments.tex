@@ -133,7 +133,7 @@ Of the \totalsuccess{} task sets that passed the EDF schedulability guarantee, 1
 \end{figure}
 
 \newpage
-\subsubsection{Results using the Earliest Deadline First scheduler}
+\subsubsection{Results for the Earliest Deadline First scheduler}
 All \totalsuccess{} task sets that passed the schedulability guarantee were run without any deadline misses. Of the \totalfailure{} rejected task sets, \edffailurepassed{} ran without any deadline misses, whereas the other \edffailurefailed{} missed at least one deadline. The results for the EDF scheduler can be seen in figure~\ref{fig:edfresults}. Of note is the fairly consistent 20\% success rate among tasks that failed the scheduling guarantee. This indicates an overestimation of task parameters, most likely those of the \ucos Tick Task.
 
 \begin{figure}[htpb]
