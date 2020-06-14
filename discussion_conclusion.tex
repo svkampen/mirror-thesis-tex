@@ -1,13 +1,13 @@
 \chapter{Discussion and conclusion}
 As discussed in the introduction, using guarantee-backed scheduling is yet another tool in the toolbox of achieving predictable and safe real-time computing. I hope this thesis gives a good overview of the required information needed to use guarantee-backed scheduling, and shows where guarantee-backed scheduling is strong.
 
-The task set schedulability experiment shows us that the practical value of a scheduling guarantee depends heavily on accurate worst-case execution time analysis. In the case of that experiment, the worst-case execution time of the \ucos tick task was probably overestimated, as the processor demand criterion rejected task sets which turned out to be schedulable in practice. At the same time, an overestimation is probably less of an issue than an underestimation -- in the experiment, all accepted task sets were schedulable in practice, which is obviously not the case if worst-case execution times are underestimated.
+The task switch time experiment shows us that the extra overhead from EDF scheduling as compared to \ucosiii is not significant, and should not be a barrier to implementing EDF-based scheduling.
+
+The task set schedulability experiment shows us that the practical value of a scheduling guarantee depends strongly on accurate worst-case execution time analysis. In the case of that experiment, the worst-case execution time of the \ucos tick task was probably overestimated, as the processor demand criterion rejected task sets which turned out to be schedulable in practice. At the same time, an overestimation is probably less of an issue than an underestimation -- in the experiment, all accepted task sets were schedulable in practice, which is obviously not the case if worst-case execution times are underestimated.
 
 As can be seen from the experiments, using dynamic priority scheduling broadly improves the amount of task sets that can be run on given hardware, thereby improving system performance and usability. This advantage is significant in real-world situations, as it can reduce manufacturing and therefore product cost, leading to wider deployment of computing hardware. That, in turn, could allow for broad societal improvements -- one example could be improved crop yields due to smart monitoring; in low-income countries, lower product costs could make a significant difference.
 
 The implementation of scheduling guarantees in real-time operating systems additionally improves system flexibility by enabling the admittance of extra tasks to the running task set at run-time. This could allow for more efficient use of computing resources, as the system does not need to be provisioned as to be able to run all tasks at all times.
-
-\emph{a comparison of scheduling overhead will be included in the final version of this thesis}
 
 \section{Further Research}
 The on-line task admittance ability induced by using an operating system that has run-time scheduling guarantee support could be more thoroughly explored -- especially in combination with the lower-complexity schedulability tests proposed by \textcite{Albers} and \textcite{Zhang2009}. Additionally, I would have liked to have explored the implementation of aperiodic job servers as discussed in the scheduling chapter, but was forced to cut this aspect due to time constraints.
